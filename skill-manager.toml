@@ -1,0 +1,36 @@
+# git-issue-workflow — skill-manager unit manifest.
+#
+# This is the implementer-side companion to git-issue: it executes the ticket
+# workflow that a git-issue work order names. Its hard skill_references are the
+# skills the workflow actually drives at runtime, so installing this skill pulls
+# them in. Coordinates are git repo ROOTS (github:owner/repo), NOT installed
+# skill names — the resolver clones the repo and detects the unit from its root
+# marker files. The repo name usually differs from the [skill].name it installs:
+#
+#   github:haydenrear/git-integration-skill -> skill "git-integration-repo"  (worktree + fan-out scripts)
+#   github:haydenrear/test_graph_skill      -> skill "test-graph"            (validation graphs)
+#   github:haydenrear/tla-spec-dev          -> skill "spec-double-compiler"  (installs the tla-spec-dev CLI)
+#   github:haydenrear/deploy-cdc            -> skill "deploy-helm"           (deployable-surface validation)
+#
+# git-issue itself is a *semantic* import only (see SKILL.md skill-imports): the
+# work order is read via gh, so completing a ticket does not require the git-issue
+# skill to be installed. Do not add it here just because the two are paired.
+skill_references = [
+  "github:haydenrear/git-integration-skill",
+  "github:haydenrear/test_graph_skill",
+  "github:haydenrear/tla-spec-dev",
+  "github:haydenrear/deploy-cdc",
+]
+
+# The GitHub CLI, installed via Homebrew. Used to read the issue, open the PR,
+# close the issue, and apply agent tags to constituent PRs. GitLab-hosted
+# integration repos use glab instead (assumed on PATH; the fan-out degrades to
+# printing steps if neither host CLI is present — see git-integration-repo).
+[[cli_dependencies]]
+spec = "brew:gh"
+on_path = "gh"
+
+[skill]
+name = "git-issue-workflow"
+version = "0.1.0"
+description = "Execute a ticket a git-issue work order describes: provision the worktree/branches and open the spec workflow, run the current->desired validation loop (spec-unit, unit, test_graph, spec graph) from the parent, close the spec workflow and issue, verify the merge and open the PR, and fan an integration change out to per-constituent branches/PRs with agent tags."
