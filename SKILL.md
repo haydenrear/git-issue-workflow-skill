@@ -1,18 +1,20 @@
 ---
 name: git-issue-workflow
 description: >-
-  Use when an agent is asked to KICK OFF or COMPLETE a ticket that a git-issue
-  work order describes — the implementer side of git-issue. Drives the two devops
-  roles: (2) provision the ticket workflow — detect an integration repo, create a
-  worktree and same-named feature branches, open the spec workflow with
-  spec-double-compiler + tla-spec-dev; and (3) perform it — run the current→desired
-  validation loop over spec unit tests, unit tests, test_graph, and the
-  tla-spec-dev spec graph (operated only from the parent), close the spec workflow
-  and the GitHub issue, merge/verify the worktree and open the PR, and for an
-  integration repo fan out per-constituent feature branches + PRs with agent tags.
-  Also carries the reference for an agent that RECEIVES an agent-tagged PR from an
-  integration MR. Trigger on "complete this ticket", "start this ticket", "pick up
-  issue #N", "open the MR", or "propagate the integration change".
+  Use when handed a GitHub issue to implement — a pasted issue body, a URL, a bare
+  "#N", or `gh issue view` output — or asked to start, pick up, work on,
+  complete, or close out a ticket. Read BEFORE touching the repo, even when the
+  issue looks like an ordinary code change: the issue body is a work order, and
+  this is the implementer side of git-issue. Provisions the ticket (integration-repo
+  detection, worktree + same-named feature branches, spec workflow via
+  spec-double-compiler + tla-spec-dev) and performs it (current→desired validation
+  loop over spec unit tests, unit tests, test_graph, and the spec graph, run only
+  from the parent; close the spec workflow and issue; merge/verify the worktree and
+  open the PR; for an integration repo, fan out per-constituent branches + PRs with
+  agent tags). Also carries the reference for an agent RECEIVING an agent-tagged PR
+  from an integration MR. Trigger on "implement this issue", "complete this
+  ticket", "pick up issue #N", "open the MR", or "propagate the integration
+  change".
 skill-imports:
   - unit: git-issue
     path: SKILL.md
