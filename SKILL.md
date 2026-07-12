@@ -90,6 +90,53 @@ test -f INTEGRATION.md && test -f integration.toml && echo INTEGRATION || echo P
   loop at the parent only, then fan-out to per-constituent branches + PRs. Use
   `git-integration-repo`'s scripts (`new-change.sh`, `propagate.sh`, `verify.sh`).
 
+## Close-out sequence — every ticket ends this way
+
+A ticket is not done when the code is green. It is done when these five moves
+have all happened, in order. Every agent runs this — no exceptions, no leaving a
+PR "ready for someone to merge later":
+
+1. **Close every open spec ticket, then the spec workflow, with the
+   `tla-spec-dev` CLI** (installed by `spec-double-compiler`). Close each ticket
+   still open in `ticket_plan.yaml` by id — not just the last one — then promote:
+   ```bash
+   tla-spec-dev --spec-root specs close ticket <ticket-id> --summary "<what landed>" --result <evidence-path>
+   # repeat for every ticket still open
+   python <spec-double-compiler-skill>/scripts/close_tickets.py --repo-root . \
+     --summary "Promoted desired/current into program_model"
+   ```
+2. **Commit and push** the implementation, spec changes, and evidence together.
+3. **Rebase and merge the PR into `main` with `gh`** — land it yourself rather
+   than leaving it open for someone else to merge:
+   ```bash
+   gh pr create --fill --body "Closes #<n>"
+   gh pr merge --rebase
+   ```
+4. **Remove the worktree and sync the project root to the new `main`.** The
+   primary checkout must actually reflect the merge before the ticket counts as
+   closed:
+   ```bash
+   git worktree remove ../wt-<ticket>
+   git -C <repo-root> checkout main && git -C <repo-root> pull origin main
+   git -C <repo-root> worktree prune
+   ```
+5. **Close the GitHub issue with `gh`.** A `Closes #<n>` merge usually closes it
+   automatically — confirm that, don't assume it, and close it explicitly if not:
+   ```bash
+   gh issue view <n> --json state,closed
+   gh issue close <n> --comment "<summary>"   # only if still open
+   ```
+
+**INTEGRATION repos** skip step 3's `gh pr merge` — the parent worktree has no
+GitHub remote to merge against, so land it with `git merge --no-ff` and
+`verify.sh` instead (`references/complete.md` step 5) — but still run 1, 2, 4,
+and 5 at the parent, then fan out to constituents
+(`references/integration-fanout.md`).
+
+Full step-by-step, including the INTEGRATION variant of each move, lives in
+`references/complete.md`; treat the list above as the checklist you're not
+allowed to skip.
+
 ## Role 2 — Provision the ticket
 
 Full flow in `references/provision.md`. In short:
@@ -115,11 +162,11 @@ In short:
 2. Run the **current→desired validation loop** until `specs/current` semantically
    equals `specs/desired_program_model` and every named graph is green
    (`references/validation-loop.md`).
-3. Close the spec workflow: `tla-spec-dev ... close ticket <ticket>` per ticket,
-   then promote to `program_model` when current == desired.
-4. Merge/verify the worktree, open the PR (`Closes #<n>`), close the issue
-   (`references/complete.md`).
-5. **INTEGRATION only:** fan out to every changed constituent — a `feature/<ticket>`
+3. Run the **close-out sequence** above: close every spec ticket and the workflow
+   via `tla-spec-dev`, commit and push, rebase-merge the PR into `main` via `gh`,
+   remove the worktree and sync the project root to the new `main`, and close the
+   GitHub issue via `gh` (`references/complete.md`).
+4. **INTEGRATION only:** fan out to every changed constituent — a `feature/<ticket>`
    branch, a PR, and an **agent tag** on each, so each constituent runs its own
    loops downstream (`references/integration-fanout.md`).
 

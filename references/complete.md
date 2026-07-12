@@ -23,10 +23,14 @@ fully checked.
 
 ## 3. Close the spec workflow
 
-The loop already closes each ticket and promotes the model when `current ==
-desired`. Confirm the workflow is actually closed out, not just the last ticket:
+The loop already closes each ticket as its slice converges. Before promoting,
+confirm **every** ticket in `ticket_plan.yaml` is closed — not just the last one —
+closing any stragglers with the `tla-spec-dev` CLI, then promote the workflow:
 
 ```bash
+# close any ticket still open (repeat per ticket id)
+tla-spec-dev --spec-root specs close ticket <ticket-id> --summary "<what landed>" --result <evidence-path>
+
 # every ticket closed in the plan, model promoted, workflow dirs removed
 python <tla-spec-dev-skill>/scripts/close_tickets.py --repo-root . \
   --summary "Promoted desired/current into program_model"
@@ -49,15 +53,20 @@ git commit -m "<ticket>: <what changed> — specs, graph, adapters, tests"
 
 ### PLAIN repo
 
-Push and open the PR; the merge is done by review/CI, so verify **after** it
-merges before removing the worktree.
+Push, open the PR, then land it yourself — rebase and merge via `gh` rather than
+leaving it for someone else to merge later. Close-out isn't done until the change
+is actually on `main`.
 
 ```bash
 git push -u origin feature/<ticket>
 gh pr create --fill --body "Closes #<n>
 
 Graphs run: <named graphs incl. specWorkflow>. Reports attached to the spec ticket."
+gh pr merge --rebase
 ```
+
+If the rebase merge is blocked (required review, branch protection, merge
+conflict), stop and surface that instead of forcing it — don't bypass a real gate.
 
 Verify it actually merged before cleanup:
 
@@ -82,7 +91,7 @@ $INT/verify.sh                 # parent tree clean + every constituent has its .
 A dirty tree or an unwired constituent here means the merge is not safe to fan out
 — stop and reconcile before step 7.
 
-## 6. Remove the worktree
+## 6. Remove the worktree and sync the project root
 
 Only once the merge is verified (PLAIN: PR merged; INTEGRATION: merged to main and
 `verify.sh` clean):
@@ -90,6 +99,24 @@ Only once the merge is verified (PLAIN: PR merged; INTEGRATION: merged to main a
 ```bash
 git worktree remove ../wt-<ticket>          # PLAIN
 git worktree remove ../<repo>-<ticket>      # INTEGRATION parent worktree
+```
+
+**PLAIN:** the primary checkout never touched this ticket's commits — they only
+exist on the remote until you pull. Sync it to the new `main` before you consider
+the ticket closed:
+
+```bash
+git -C <repo-root> checkout main
+git -C <repo-root> pull origin main
+git -C <repo-root> worktree prune
+git -C <repo-root> branch -d feature/<ticket>   # local branch is merged; safe to drop
+```
+
+**INTEGRATION:** step 5's `git merge --no-ff feature/<ticket>` already updated
+`<repo-root>` directly, so just prune the stale worktree registration:
+
+```bash
+git -C <repo-root> worktree prune
 ```
 
 ## 7. Close the GitHub issue
@@ -113,11 +140,13 @@ its *own* spec/test-graph loops downstream. Do this now via
 ## Close-out checklist
 
 - [ ] Implemented in the worktree (parent worktree for integration)
-- [ ] Validation loop green; spec workflow promoted and closed
+- [ ] Validation loop green
+- [ ] Every ticket closed via `tla-spec-dev`; spec workflow promoted and closed
 - [ ] Test-graph reports attached to the in-repo spec ticket
 - [ ] Committed and pushed to `feature/<ticket>`
-- [ ] PR opened with `Closes #<n>`; merge verified
+- [ ] PLAIN: PR opened with `Closes #<n>`, rebase-merged into `main` via `gh pr merge --rebase`, merge verified
 - [ ] INTEGRATION: parent merged to main and `verify.sh` clean
 - [ ] Worktree removed
-- [ ] GitHub issue closed
+- [ ] Project root (`<repo-root>`) synced to the new `main`
+- [ ] GitHub issue closed via `gh`
 - [ ] INTEGRATION: fan-out done (`references/integration-fanout.md`)
