@@ -3,18 +3,17 @@ name: git-issue-workflow
 description: >-
   Use when handed a GitHub issue to implement — a pasted issue body, a URL, a bare
   "#N", or `gh issue view` output — or asked to start, pick up, work on,
-  complete, or close out a ticket. Read BEFORE touching the repo, even when the
-  issue looks like an ordinary code change: the issue body is a work order, and
-  this is the implementer side of git-issue. Provisions the ticket (integration-repo
-  detection, worktree + same-named feature branches, spec workflow via
-  spec-double-compiler + tla-spec-dev) and performs it (current→desired validation
-  loop over spec unit tests, unit tests, test_graph, and the spec graph, run only
-  from the parent; close the spec workflow and issue; merge/verify the worktree and
-  open the PR; for an integration repo, fan out per-constituent branches + PRs with
-  agent tags). Also carries the reference for an agent RECEIVING an agent-tagged PR
-  from an integration MR. Trigger on "implement this issue", "complete this
-  ticket", "pick up issue #N", "open the MR", or "propagate the integration
-  change".
+  complete, or close out a ticket, including one assigned from a shared epic spec
+  workflow. Read BEFORE touching the repo: the issue body is a work order, and the
+  `git-epic-workflow:assignment` marker selects a higher-priority epic mode before
+  ordinary or integration provisioning. Epic tickets branch from the declared
+  `origin/epic/*`, close/promote only their assigned spec ticket with evidence, and
+  open a PR back to the epic branch for external review. Unmarked tickets retain
+  the ordinary/integration flow: worktree provisioning, current→desired validation,
+  workflow/issue close-out, merge verification, and integration fan-out. Trigger
+  on "implement this issue", "complete this ticket", "pick up issue #N", "work
+  this epic ticket", "open the MR", or "propagate the integration change".
+  Also use when receiving an agent-tagged PR from an integration MR.
 skill-imports:
   - unit: git-issue
     path: SKILL.md
@@ -40,10 +39,11 @@ skill-imports:
 
 The **implementer side** of `git-issue`. A work order created by the `git-issue`
 skill names the moves — worktree, spec workflow, regression graphs, close-out.
-This skill is how an agent actually **runs** them, end to end, and finishes with a
-PR (and, for an integration repo, a fan-out to every constituent).
+This skill is how an agent actually **runs** them. An epic assignment stops at a
+PR into its shared epic branch; an ordinary ticket runs end to end (and, for an
+integration repo, fans out to every constituent).
 
-It covers the two downstream devops roles:
+For ordinary and integration tickets it covers two downstream devops roles:
 
 - **Role 2 — Provision (kick off).** Read the issue, set up the worktree and
   feature branch(es), detect whether this is an integration repo, and open the
@@ -53,11 +53,35 @@ It covers the two downstream devops roles:
   merge, open the PR, and — for an integration repo — fan out per-constituent
   branches/PRs with agent tags. See `references/complete.md`.
 
-`git-issue` files the work; this skill closes it. The role-1 author uses
+`git-issue` files the work; this skill executes it. The role-1 author uses
 `git-issue`; roles 2 and 3 use this skill. They can be the same agent in one
-session or three different agents across a handoff.
+session or three different agents across a handoff. Epic assignments use the
+same issue as their work order but deliberately leave the GitHub issue and epic
+workflow open after the ticket PR is created.
 
-## Three load-bearing rules
+## Select epic mode before any provisioning
+
+Read the complete issue body before choosing a branch, worktree, repository mode,
+or spec command. Search for the exact marker:
+
+```text
+<!-- git-epic-workflow:assignment:start -->
+```
+
+- **Marker present:** this is epic ticket mode. Read
+  `references/epic-ticket.md` and follow it instead of Role 2, Role 3, the
+  ordinary close-out sequence, or integration fan-out. The assignment's declared
+  branch, worktree, ticket, validation, promotion, and PR base are authoritative.
+  This selection happens even when the checkout also has integration-repo markers.
+- **Marker absent:** continue with the existing PLAIN/INTEGRATION detection and
+  ordinary procedures below.
+
+Do not scaffold a workflow, create a default-branch worktree, or run an
+integration provisioning script until this marker check is complete. An epic
+assignment overrides ordinary instructions that say to branch from, merge to, or
+sync the default branch.
+
+## Three load-bearing rules for ordinary and integration tickets
 
 These decide most of the mechanics — get them wrong and the rest breaks.
 
@@ -90,11 +114,13 @@ test -f INTEGRATION.md && test -f integration.toml && echo INTEGRATION || echo P
   loop at the parent only, then fan-out to per-constituent branches + PRs. Use
   `git-integration-repo`'s scripts (`new-change.sh`, `propagate.sh`, `verify.sh`).
 
-## Close-out sequence — every ticket ends this way
+## Ordinary close-out sequence
 
-A ticket is not done when the code is green. It is done when these five moves
-have all happened, in order. Every agent runs this — no exceptions, no leaving a
-PR "ready for someone to merge later":
+An unmarked ticket is not done when the code is green. It is done when these five
+moves have all happened, in order. Every ordinary/integration agent runs this —
+no exceptions, no leaving a PR "ready for someone to merge later". Epic tickets
+do not run this sequence; their ticket-scoped close-out and external-review stop
+are in `references/epic-ticket.md`.
 
 1. **Close every open spec ticket, then the spec workflow, with the
    `tla-spec-dev` CLI** (installed by `spec-double-compiler`). Close each ticket
@@ -137,7 +163,7 @@ Full step-by-step, including the INTEGRATION variant of each move, lives in
 `references/complete.md`; treat the list above as the checklist you're not
 allowed to skip.
 
-## Role 2 — Provision the ticket
+## Role 2 — Provision an ordinary or integration ticket
 
 Full flow in `references/provision.md`. In short:
 
@@ -152,7 +178,7 @@ Full flow in `references/provision.md`. In short:
    "<title>"` then `tla-spec-dev --spec-root specs open ticket <ticket>`. Commit the
    scaffolded `current/`/`desired/` so the branch is spec-first.
 
-## Role 3 — Perform the ticket
+## Role 3 — Perform an ordinary or integration ticket
 
 Full flow in `references/complete.md`; the loop is `references/validation-loop.md`.
 In short:
@@ -182,6 +208,7 @@ receiver flow is `references/agent-tag-pr.md`.
 
 | You are… | Read |
 |---|---|
+| Assigned one ticket from a shared epic workflow | `references/epic-ticket.md` |
 | Kicking off a ticket | `references/provision.md` |
 | Completing a ticket | `references/complete.md` |
 | Running the green loop | `references/validation-loop.md` |
@@ -192,6 +219,9 @@ receiver flow is `references/agent-tag-pr.md`.
 
 - This skill **executes** a ticket; it does not author the issue. Issue creation,
   the References section, and the spec-required decision are `git-issue`'s job.
+- It does not create or amend an epic assignment. In epic mode it consumes the
+  marker-delimited assignment exactly as written and stops when required fields
+  or scheduling state are inconsistent.
 - It does not reimplement the spec, test-graph, or integration mechanics — it
   **sequences** them. The mechanics live in `spec-double-compiler` (the
   `tla-spec-dev` CLI), `test-graph` (the graph scripts), and `git-integration-repo`

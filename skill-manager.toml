@@ -32,5 +32,5 @@ on_path = "gh"
 
 [skill]
 name = "git-issue-workflow"
-version = "0.1.0"
-description = "Execute a ticket a git-issue work order describes: provision the worktree/branches and open the spec workflow, run the current->desired validation loop (spec-unit, unit, test_graph, spec graph) from the parent, close the spec workflow and issue, verify the merge and open the PR, and fan an integration change out to per-constituent branches/PRs with agent tags."
+version = "0.2.0"
+description = "Execute a git-issue work order in its selected mode: for marker-assigned epic tickets, branch from the declared origin/epic branch, validate and promote only the assigned spec ticket, then open an evidence-backed PR to the epic branch for external review; for unmarked tickets, preserve the ordinary/integration worktree, full close-out, merge verification, fan-out, and agent-tagged PR receiver workflow."
