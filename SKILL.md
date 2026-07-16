@@ -170,8 +170,11 @@ Full flow in `references/provision.md`. In short:
 1. Read the issue (References, Spec-workflow section, Regression checklist). Confirm
    `gh` auth and the right repo.
 2. Detect PLAIN vs INTEGRATION (above).
-3. Create the worktree + `feature/<ticket>`:
-   - PLAIN: `git worktree add ../wt-<ticket> -b feature/<ticket> origin/main`.
+3. Create the worktree + `feature/<ticket>`, applying the index-base pinning
+   conventions in `references/provision.md` §3 (clean tree; resolve the base
+   rev to commit/tree OIDs once; create-only `refs/index-bases/*` retention
+   ref; branch from the pinned commit):
+   - PLAIN: `git worktree add ../wt-<ticket> -b feature/<ticket> <commit_oid>`.
    - INTEGRATION: `<git-integration-repo>/scripts/new-change.sh <ticket>`.
 4. If the issue's Spec-workflow section is REQUIRED, open the spec workflow **now**,
    on the fresh branch: `tla-spec-dev --spec-root specs scaffold workflow <ticket>

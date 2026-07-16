@@ -69,11 +69,20 @@ this assignment, resume it; do not create a duplicate.
 
 ## 2. Create or resume the declared epic-based worktree
 
-For a new assignment, use the exact values from the assignment:
+For a new assignment, use the exact values from the assignment. Apply the
+index-base pinning conventions from `provision.md` §3 (clean tree, resolve the
+epic branch to `commit_oid`/`tree_oid` once, create-only
+`refs/index-bases/<repo-id>/<tree_oid>` retention ref, branch from the pinned
+commit — never re-resolve `origin/epic/<slug>` afterwards):
 
 ```bash
+git fetch origin
+test -z "$(git status --porcelain)" || { echo "dirty tree — reconcile first"; exit 1; }
+commit_oid=$(git rev-parse origin/epic/<slug>)
+tree_oid=$(git rev-parse "origin/epic/<slug>^{tree}")
+git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/${tree_oid}" "$commit_oid" ""
 git worktree add ../wt-<issue-number>-<slug> \
-  -b feature/<issue-number>-<slug> origin/epic/<slug>
+  -b feature/<issue-number>-<slug> "$commit_oid"
 cd ../wt-<issue-number>-<slug>
 ```
 

@@ -43,11 +43,44 @@ targets exactly these constituents (`references/integration-fanout.md`).
 
 **Same branch name everywhere:** `feature/<ticket>`.
 
+### Index-base pinning conventions (every worktree, both repo shapes)
+
+Every worktree this workflow creates must be reproducible against an immutable
+base. Apply these at creation time, before any daemon, indexer, or build tool
+touches the worktree:
+
+1. **Clean slate.** The source checkout must be fully committed —
+   `git status --porcelain` empty. Never provision over staged or dirty state;
+   stop and reconcile instead.
+2. **Resolve the base rev to object IDs once.** Capture
+   `commit_oid=$(git rev-parse <base-ref>)` and
+   `tree_oid=$(git rev-parse "<base-ref>^{tree}")` at creation and record them
+   in the ticket evidence (and the daemon version file where an indexing
+   platform runs). Never re-resolve the branch name afterwards — a ref is a
+   symbolic name, not an identity.
+3. **Retention ref.** Pin the base objects with a create-only custom ref so no
+   later rebase or git GC can orphan what the worktree depends on:
+   `git update-ref refs/index-bases/<repo-id>/<tree_oid> <commit_oid> ""`
+   (empty old-value = compare-and-swap create; an existing ref pointing at a
+   different commit is a hard error). Reserved namespace — never public tags.
+4. **Branch from the pinned commit.** Create the feature branch from
+   `<commit_oid>` (equivalently `git worktree add --detach` then branch), so
+   the worktree base stays the pinned object even if the source branch
+   advances.
+
+Repos onboarded to an index platform (e.g. commit-diff-context snapshot
+branching) consume these OIDs as the immutable base-snapshot identity. The
+conventions hold even where no indexer runs — worktrees stay reproducible.
+
 ### PLAIN repo
 
 ```bash
 git fetch origin
-git worktree add ../wt-<ticket> -b feature/<ticket> origin/main   # use the repo's default branch
+test -z "$(git status --porcelain)" || { echo "dirty tree — reconcile first"; exit 1; }
+commit_oid=$(git rev-parse origin/main)              # use the repo's default branch
+tree_oid=$(git rev-parse "origin/main^{tree}")
+git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/${tree_oid}" "$commit_oid" ""
+git worktree add ../wt-<ticket> -b feature/<ticket> "$commit_oid"
 cd ../wt-<ticket>
 ```
 
