@@ -236,6 +236,40 @@ The closed ticket head represents sealed evidence. Semantic changes requested in
 review require an explicit amendment ticket rather than rewriting the recorded
 close history.
 
+### Your worktree survives, so its home has to be dealt with here
+
+An ordinary ticket runs `home close-out` and then removes its worktree
+(`references/complete.md` step 6). You do not: external review owns the merge, so
+you leave the worktree standing. That does **not** postpone the home question — it
+makes it worse, because the person who eventually removes this worktree is the
+epic finalizer, and they have no idea what is inside your home.
+
+Your home is `<worktree>/.skill-manager`, a real copy of the project home, and it
+is gitignored — so nothing you changed inside it is in the PR you just opened, in
+the sealed close-history entry, or in any of the evidence you attached.
+
+Before you stop:
+
+```bash
+# 1. Did I change a skill while working this ticket?
+skill-manager home close-out --home ../wt-<issue-number>-<slug>/.skill-manager \
+                             --into <repo-root>/.skill-manager --json
+```
+
+- **Clean:** say so in the PR body, one line. The finalizer needs to know the gate
+  was already green, not to guess.
+- **Blockers:** clear them now, not at epic close. For an improvement to a skill,
+  the command that matters is `skill-manager unit publish <unit> --ticket <ticket>`
+  — it puts the edit in the unit's own repository, which is the only route that
+  reaches sibling projects and the only one that outlives this machine.
+  `skill-manager home sync --from … --to … --merge` only lifts it into the project
+  home: enough to survive the teardown, not enough to be seen anywhere else.
+  Then re-run the gate and record the clean verdict in the PR body.
+
+Do **not** remove the worktree, and do not use `--force` to make a blocker go
+away. A sealed PR whose home still holds the only copy of an unpublished skill
+edit is an unrecorded dependency on a directory somebody else is going to delete.
+
 ## Epic ticket checklist
 
 - [ ] Epic marker selected before ordinary/integration provisioning
@@ -248,4 +282,6 @@ close history.
 - [ ] Promotion predecessor merged and latest epic tip reconciled
 - [ ] Only the assigned ticket closed/promoted; no bypass or whole close used
 - [ ] PR opened with `Refs #<issue>` and base `epic/*`
+- [ ] `home close-out` verdict clean and stated in the PR body; any skill edit
+      published with `unit publish`; worktree left standing
 - [ ] Work stopped for external review; issue and default branch untouched

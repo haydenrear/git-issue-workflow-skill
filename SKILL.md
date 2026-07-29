@@ -99,6 +99,40 @@ These decide most of the mechanics — get them wrong and the rest breaks.
    doubles and manifests land on the feature branch from creation; the main tree
    stays clean so `git-integration-repo`'s constituent `.git`s are undisturbed.
 
+## Your Skill Manager home IS the worktree's
+
+The skills you are running are not the operator's. On a machine with per-checkout
+homes there are three tiers, and **each is a real copy, not a symlink**:
+
+```
+root       ~/.skill-manager              where the operator installs
+   |  copy
+project    <repo>/.skill-manager         one per repository, gitignored
+   |  copy
+worktree   <worktree>/.skill-manager     YOURS, for this ticket, gitignored
+```
+
+Copies, because a link is a single shared object: two tickets editing "their"
+copy of a skill would be editing each other's, and last writer wins silently.
+Your worktree home is the whole reason you can improve a skill mid-ticket at all.
+
+Two consequences you have to act on, and neither is optional:
+
+- **Launch through the home's shims**, `<worktree>/.skill-manager/bin/launch/{claude,codex,gemini}`,
+  or `skill-manager exec`. Exporting `SKILL_MANAGER_HOME` by hand gets you the
+  part you remembered: skills also load from the Claude config dir, and
+  `skill-script` CLI wrappers are generated shell scripts with a home's absolute
+  path in the body, which no variable redirects. The shims apply the whole
+  contract.
+- **An edit you make to a skill inside that home is in no diff.** The home is
+  gitignored, so `git add -A` never sees it, the parent PR cannot carry it, and
+  `git worktree remove` deletes it without a word — succeeding exactly as
+  quietly whether the home held a week of work or nothing. Getting it out is
+  step 4 of the close-out sequence below, and it is a gate, not a reminder.
+
+Downward (root → project → worktree) is a copy and needs nothing from you.
+**Upward is the whole difficulty**, and it is why the close-out order matters.
+
 ## Is this an integration repo?
 
 Decide first — it changes provisioning and fan-out. It **is** an integration repo
@@ -138,14 +172,26 @@ are in `references/epic-ticket.md`.
    gh pr create --fill --body "Closes #<n>"
    gh pr merge --rebase
    ```
-4. **Remove the worktree and sync the project root to the new `main`.** The
-   primary checkout must actually reflect the merge before the ticket counts as
-   closed:
+4. **Close out the worktree's Skill Manager home, THEN remove the worktree, then
+   sync the project root to the new `main`.** The gate runs *before* the
+   removal — after it, there is nothing left to save:
    ```bash
+   # 4a. Does this worktree still hold work that removing it would destroy?
+   skill-manager home close-out --home ../wt-<ticket>/.skill-manager \
+                                --into <repo-root>/.skill-manager
+   #     Exit 0: nothing to lose. Non-zero: every blocking unit is named with the
+   #     literal command that clears it — run those, then re-run this. Do not
+   #     "work around" a blocker; it is the only notice you get.
+
+   # 4b. Only now:
    git worktree remove ../wt-<ticket>
    git -C <repo-root> checkout main && git -C <repo-root> pull origin main
    git -C <repo-root> worktree prune
    ```
+   In an **integration repo**, run `close-change.sh` instead of 4a+4b — it runs
+   the same gate, refuses on a non-zero verdict (exit 4), and only then removes
+   the worktree. Details and the `--force` semantics are in
+   `references/complete.md` step 6.
 5. **Close the GitHub issue with `gh`.** A `Closes #<n>` merge usually closes it
    automatically — confirm that, don't assume it, and close it explicitly if not:
    ```bash

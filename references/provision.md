@@ -100,6 +100,45 @@ cd ../<repo>-<ticket>
 Do **not** create per-constituent branches now. Constituent-level git happens
 only at fan-out, after the change merges back to the integration main tree.
 
+### Give the worktree its own Skill Manager home
+
+Provisioning is not finished when the worktree exists. A worktree with no home of
+its own runs the operator's global `~/.skill-manager`, which every other agent
+and every other worktree is also writing. That is the state this step removes.
+
+**INTEGRATION:** `new-change.sh` already did it — it bootstraps every worktree it
+creates, before it returns. Confirm rather than repeat:
+
+```bash
+test -d ../<repo>-<ticket>/.skill-manager && echo "home present"
+```
+
+**PLAIN:** do it now, before running anything that installs, syncs, binds, or
+resolves:
+
+```bash
+<git-integration-repo-skill>/scripts/bootstrap-home.sh --root ../wt-<ticket>
+```
+
+Onboarded repos also carry a two-line locator, `scripts/agent-home.sh`, so you do
+not have to know where the skill lives.
+
+**Ordering is not a style preference.** `install`, `sync`, `bind`, `upgrade` and
+`project resolve` all write into whatever `SKILL_MANAGER_HOME` names, and before
+the local home exists that is the operator's global home — `project resolve`
+additionally writes a child-home record and a projection ledger into it. Create
+the home, let it export `SKILL_MANAGER_HOME`, and only then run any of those.
+
+The home is a **copy** of the project home it was cloned from, not a link, so two
+tickets in two worktrees cannot overwrite each other's skills. It is also
+gitignored, which is what makes step 6 of `references/complete.md` a gate rather
+than a courtesy: nothing you put in it appears in any diff. Launch agents through
+`<worktree>/.skill-manager/bin/launch/{claude,codex,gemini}` so the whole launch
+contract applies; do not export the variables by hand.
+
+Full mechanism, the `live`/`frozen` policy, and teardown:
+`<git-integration-repo-skill>/references/skill-homes.md`.
+
 > Why "depend on the same ones": every constituent branch, the parent branch, the
 > MR title prefix, and the tracking issue all key off `<ticket>`. A single id
 > keeps one change traceable across the parent PR and every sub-repo PR. Never
@@ -143,6 +182,8 @@ challenge it only if you discover state-machine surface it missed
 Provisioning is done when:
 
 - [ ] Worktree exists on `feature/<ticket>` (parent worktree for integration).
+- [ ] Worktree has its own `.skill-manager` home, and nothing mutating ran before
+      it existed.
 - [ ] PLAIN vs INTEGRATION recorded; constituents/host noted if integration.
 - [ ] Spec workflow opened and committed, or explicitly marked N/A with a reason.
 - [ ] The issue's named regression graphs are captured for role 3.
