@@ -177,17 +177,27 @@ are in `references/epic-ticket.md`.
    removal — after it, there is nothing left to save:
    ```bash
    # 4a. Does this worktree still hold work that removing it would destroy?
+   #     The `&&` is load-bearing. Two commands on separate lines run the second
+   #     one whatever the first returned, which is exactly the loss this gate
+   #     exists to prevent.
    skill-manager home close-out --home ../wt-<ticket>/.skill-manager \
-                                --into <repo-root>/.skill-manager
-   #     Exit 0: nothing to lose. Non-zero: every blocking unit is named with the
-   #     literal command that clears it — run those, then re-run this. Do not
-   #     "work around" a blocker; it is the only notice you get.
+                                --into <repo-root>/.skill-manager \
+     && git worktree remove ../wt-<ticket>
 
-   # 4b. Only now:
-   git worktree remove ../wt-<ticket>
+   # 4b. Only once that succeeded:
    git -C <repo-root> checkout main && git -C <repo-root> pull origin main
    git -C <repo-root> worktree prune
    ```
+   Exit 0 is the only one that means "proceed". The three non-zero exits are not
+   interchangeable and only the first prints blockers:
+   - **1** — the worktree still holds work. Every blocking unit is named with the
+     literal command that clears it. Run those, then re-run. Do not work around
+     it; this is the only notice you get.
+   - **2** — the path given to `--home` is not a home. Almost always: you passed
+     the worktree directory instead of its `.skill-manager`. No blockers printed,
+     because nothing was assessed.
+   - **9** — the destination home is `frozen`, so the gate was refused and
+     **nothing was attempted**. Not a verdict about your work.
    In an **integration repo**, run `close-change.sh` instead of 4a+4b — it runs
    the same gate, refuses on a non-zero verdict (exit 4), and only then removes
    the worktree. Details and the `--force` semantics are in

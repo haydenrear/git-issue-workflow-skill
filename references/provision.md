@@ -120,8 +120,13 @@ resolves:
 <git-integration-repo-skill>/scripts/bootstrap-home.sh --root ../wt-<ticket>
 ```
 
-Onboarded repos also carry a two-line locator, `scripts/agent-home.sh`, so you do
-not have to know where the skill lives.
+Some repository roots carry a `scripts/agent-home.sh` locator that finds the skill
+for you. Check before assuming it — it is not part of onboarding and most
+repositories do not have one:
+
+```bash
+test -x scripts/agent-home.sh && echo "use it" || echo "call bootstrap-home.sh directly"
+```
 
 **Ordering is not a style preference.** `install`, `sync`, `bind`, `upgrade` and
 `project resolve` all write into whatever `SKILL_MANAGER_HOME` names, and before

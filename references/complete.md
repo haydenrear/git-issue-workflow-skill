@@ -114,12 +114,24 @@ skill-manager home close-out --home ../wt-<ticket>/.skill-manager \
 worktree's home was cloned from. Not `~/.skill-manager`: the pair has to be the
 one the copy was actually made from, or the verdict is about the wrong two homes.
 
-Read the verdict, not the exit code alone:
+Read the verdict, not the exit code alone. There are four exits and only one of
+them prints blockers:
 
 - **exit 0** — "holds nothing that removing it would destroy". Proceed.
-- **non-zero** — each blocking unit is printed with its `status` and the literal
-  command that clears it. There are only two shapes of remedy, and they answer
-  different questions:
+- **exit 2** — the path you gave `--home` is **not a home**. Nothing was
+  assessed, so nothing is printed. Almost always you passed the worktree
+  directory rather than its `.skill-manager` — which is also the path
+  `git worktree remove` takes, so this exit is the one standing between a typo
+  and a silent "safe" verdict about the directory holding the only copy.
+- **exit 9** — the destination home's policy is `frozen`, so the gate was
+  refused and **nothing was attempted**. This is not a statement about your
+  work; `9` ("refused, nothing attempted") is not `1` ("this worktree still
+  holds work"). Either unfreeze the destination
+  (`skill-manager home policy live --home <repo-root>/.skill-manager`) or pass a
+  different `--into`.
+- **exit 1** — the real verdict: this worktree holds work. Each blocking unit is
+  printed with its `status` and the literal command that clears it. There are
+  only two shapes of remedy, and they answer different questions:
 
   ```bash
   # Move the edit UP A TIER, so closing this worktree does not take it with it.
