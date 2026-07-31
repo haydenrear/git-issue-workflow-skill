@@ -44,6 +44,27 @@ a PR/MR against the constituent's default branch with `--mr` (using `gh` or `gla
 per `[integration].host`). Re-running is safe and converges — unchanged
 constituents are skipped.
 
+### What propagate.sh cannot carry
+
+`propagate.sh` fans out **the parent diff** — the files you committed to the
+integration feature branch. It knows nothing about Skill Manager homes, and it
+cannot: a home is gitignored, so `git add -A` in the worktree never saw it and
+there is no diff to fan out.
+
+So if you improved a skill during this ticket by editing it inside
+`<worktree>/.skill-manager/skills/<unit>/`, the fan-out does **not** publish it,
+no constituent PR contains it, and the receiving agents will not see it. That edit
+travels by exactly one route:
+
+```bash
+skill-manager unit publish <unit> --ticket <ticket>    # to the unit's own repo
+```
+
+The reverse mistake costs just as much: if you edited a skill as a **constituent
+of this repository** — under `constituents/<skill>/` — that *is* the parent diff
+and `propagate.sh` is the right and only flow. Decide which artifact you changed:
+a repository's tracked files, or a unit inside a home.
+
 ## 2. Add the agent tag to each constituent PR
 
 `propagate.sh` opens the PRs and files one coordinating tracking issue, but the

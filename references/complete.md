@@ -91,10 +91,90 @@ $INT/verify.sh                 # parent tree clean + every constituent has its .
 A dirty tree or an unwired constituent here means the merge is not safe to fan out
 — stop and reconcile before step 7.
 
-## 6. Remove the worktree and sync the project root
+## 6. Close out the worktree's home, then remove the worktree, then sync the root
 
 Only once the merge is verified (PLAIN: PR merged; INTEGRATION: merged to main and
-`verify.sh` clean):
+`verify.sh` clean).
+
+### 6a. The gate — run it BEFORE anything is deleted
+
+`git worktree remove` deletes `<worktree>/.skill-manager` without asking, and it
+succeeds exactly as quietly whether that home held a week of skill edits or
+nothing at all. The home is gitignored, so the loss appears in no diff, in no PR,
+and in no fan-out. Everything in steps 1–5 was about the repository's files; this
+step is about the units you were *using*, which live somewhere the repository
+cannot see.
+
+```bash
+skill-manager home close-out --home ../wt-<ticket>/.skill-manager \
+                             --into <repo-root>/.skill-manager
+```
+
+`--into` is the **project** home — the main working tree's, the one this
+worktree's home was cloned from. Not `~/.skill-manager`: the pair has to be the
+one the copy was actually made from, or the verdict is about the wrong two homes.
+
+Read the verdict, not the exit code alone. There are four exits and only one of
+them prints blockers:
+
+- **exit 0** — "holds nothing that removing it would destroy". Proceed.
+- **exit 2** — the path you gave `--home` is **not a home**. Nothing was
+  assessed, so nothing is printed. Almost always you passed the worktree
+  directory rather than its `.skill-manager` — which is also the path
+  `git worktree remove` takes, so this exit is the one standing between a typo
+  and a silent "safe" verdict about the directory holding the only copy.
+- **exit 9** — the destination home's policy is `frozen`, so the gate was
+  refused and **nothing was attempted**. This is not a statement about your
+  work; `9` ("refused, nothing attempted") is not `1` ("this worktree still
+  holds work"). Either unfreeze the destination
+  (`skill-manager home policy live --home <repo-root>/.skill-manager`) or pass a
+  different `--into`.
+- **exit 1** — the real verdict: this worktree holds work. Each blocking unit is
+  printed with its `status` and the literal command that clears it. There are
+  only two shapes of remedy, and they answer different questions:
+
+  ```bash
+  # Move the edit UP A TIER, so closing this worktree does not take it with it.
+  # Local to this machine. --merge is a three-way against the recorded baseline;
+  # a conflict is reported and left for you, and a conflicted unit writes nothing.
+  skill-manager home sync --from ../wt-<ticket>/.skill-manager \
+                          --to <repo-root>/.skill-manager --merge
+
+  # Push the edit to the UNIT'S OWN GIT REPO. This is the only path that reaches
+  # a sibling project, and the only one that survives this machine.
+  skill-manager unit publish <unit> --ticket <ticket>
+  ```
+
+  They are not alternatives. A sync-only chain would need the same improvement
+  merged up twice and would still never reach another project. If you improved a
+  skill during this ticket, `unit publish` is the one you owe; `home sync` only
+  stops the worktree teardown destroying it.
+
+  A `LINKED` blocker means the gate **cannot tell** whose bytes those are —
+  resolve the symlink first. "Cannot tell" blocks on purpose; clearing it is how
+  `clean: true` came to be printed for a home whose whole `skills/` directory was
+  a link.
+
+Use `--json` when you want to act on `.blockers[]` programmatically. The command
+writes nothing and is safe to re-run after each remedy.
+
+**INTEGRATION repos** run the wrapper instead, which does the gate and the removal
+in the right order and refuses (exit 4) on a non-zero verdict:
+
+```bash
+INT=<git-integration-repo-skill>/scripts
+$INT/close-change.sh <ticket>              # add --dry-run to just ask
+```
+
+`close-change.sh --force` still runs the gate and still prints every blocker; it
+only declines to stop, and it says the work is being discarded. It exists so that
+someone throwing away a spike uses a named, loud override instead of `rm -rf`,
+which skips this check and every other one. `--force` is not on
+`skill-manager home close-out` itself — the CLI's job is the verdict, the script's
+job is whether to obey it. Never reach for it to get past a blocker you have not
+read.
+
+### 6b. Remove the worktree
 
 ```bash
 git worktree remove ../wt-<ticket>          # PLAIN
@@ -146,6 +226,8 @@ its *own* spec/test-graph loops downstream. Do this now via
 - [ ] Committed and pushed to `feature/<ticket>`
 - [ ] PLAIN: PR opened with `Closes #<n>`, rebase-merged into `main` via `gh pr merge --rebase`, merge verified
 - [ ] INTEGRATION: parent merged to main and `verify.sh` clean
+- [ ] `home close-out` run and clean (or every blocker cleared by `home sync --merge` / `unit publish`) **before** any removal
+- [ ] Any skill improvement made inside the worktree's home published to that unit's own repo
 - [ ] Worktree removed
 - [ ] Project root (`<repo-root>`) synced to the new `main`
 - [ ] GitHub issue closed via `gh`
