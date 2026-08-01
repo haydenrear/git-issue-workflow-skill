@@ -38,6 +38,31 @@ advancing the model:
    $TG/run.py specWorkflow
    ```
 
+## The fifth layer: the goal signal (advisory, never a gate)
+
+When the work order declares a goal — an epic assignment's `goals:` block or an
+ordinary issue's `## Goals & evaluation` section — there is one more thing to run
+before close, and it is deliberately **not** one of the four above:
+
+```bash
+<the declared local_signal>          # store its output under the evidence root
+```
+
+It sits outside the four layers because it answers a different question. The four
+layers ask *did this land correctly*, and each one is pass/fail. The goal signal
+asks *did this move what the work was for*, and it has no pass state at all —
+only a measurement and a classification: moved as expected, moved less than
+expected, no measurable movement, or moved the wrong way. Record it, do not gate
+on it.
+
+Keeping it a separate layer is the whole point. Folded into the four, it becomes
+a fifth thing to make green, and an agent will start tuning to the metric,
+re-running until a number improves, or reaching outside the slice to move it —
+which is how a set of individually-defensible tickets ends up optimizing proxies
+instead of delivering the outcome. The REQUIRED matrix decides pass/fail; the
+named evaluation ticket decides the goal. Details, classifications, and the
+reporting format: `references/goal-signal.md`.
+
 ## The loop, per slice
 
 Repeat until the ticket-local model has converged:
@@ -93,3 +118,15 @@ you return to `references/complete.md` to finish the PR and issue.
 - [ ] Every ticket closed in `ticket_plan.yaml`; `current == desired`
 - [ ] Model promoted into `program_model`; workflow dirs cleaned
 - [ ] Evidence recorded and committed
+
+The goal signal has its own definition of done, and "green" is not part of it:
+
+- [ ] Every declared `local_signal` run once (or `N/A: <reason>` recorded)
+- [ ] Its output stored under the evidence root and classified
+- [ ] The classification reported in the PR body — including "no measurable
+      movement" and "moved the wrong way"
+
+**Recorded and reported**, not green. A signal that moved the wrong way leaves
+this loop done; it is reported and, where it shows the goal is unreachable from
+this slice, filed as a deferred finding. It never blocks close, and it is never
+grounds for another lap.

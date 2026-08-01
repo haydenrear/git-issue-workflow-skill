@@ -82,6 +82,10 @@ gh pr comment <pr> --repo <owner>/<constituent> --body "<agent-trigger-marker> t
 
 Give the receiving agent what it needs in the tag/body: the ticket id, the parent
 PR link, and a one-line pointer to run its own loop (`references/agent-tag-pr.md`).
+When the issue declared a goal, carry the `## Goal contribution` rows measured at
+the parent into the tracking issue as well — the parent measured the change as a
+whole, and a constituent agent that re-derives its own number is measuring a
+fragment of it (`references/goal-signal.md`).
 For GitLab hosts, use `glab mr` equivalents (`glab mr update`, labels via
 `--label`).
 
