@@ -10,14 +10,22 @@ description: >-
   `origin/epic/*`, close/promote only their assigned spec ticket with evidence, and
   open a PR back to the epic branch for external review. Unmarked tickets retain
   the ordinary/integration flow: worktree provisioning, current→desired validation,
-  workflow/issue close-out, merge verification, and integration fan-out. Trigger
+  workflow/issue close-out, merge verification, and integration fan-out. A ticket
+  that declares a goal reads its expected effect before implementing, runs the
+  declared local signal as advisory evidence, and reports goal contribution in the
+  PR; a `role: evaluation` ticket runs the goal harness on the integrated epic tip
+  and reports a met/missed/unmeasured verdict. Trigger
   on "implement this issue", "complete this ticket", "pick up issue #N", "work
-  this epic ticket", "open the MR", or "propagate the integration change".
+  this epic ticket", "run the evaluation ticket", "open the MR", or "propagate the
+  integration change".
   Also use when receiving an agent-tagged PR from an integration MR.
 skill-imports:
   - unit: git-issue
     path: SKILL.md
     reason: This skill executes the worktree/spec/close-out moves that a git-issue work order names; the issue body is the input to provisioning.
+  - unit: git-epic-workflow
+    path: references/goals-and-evaluation.md
+    reason: Source of truth for goal field names and semantics — goal kinds, contribution kinds, baselines, and the evaluation-ticket contract this skill consumes from the assignment's `goals:` block.
   - unit: git-integration-repo
     path: references/propagation.md
     reason: Integration-repo provisioning (worktree, same-named branches) and fan-out (per-constituent branches, MRs, tracking issue) use its scripts and model.
@@ -73,6 +81,9 @@ or spec command. Search for the exact marker:
   ordinary close-out sequence, or integration fan-out. The assignment's declared
   branch, worktree, ticket, validation, promotion, and PR base are authoritative.
   This selection happens even when the checkout also has integration-repo markers.
+  An assignment whose `ticket.role` is `evaluation` decides goals instead of
+  producing a behavioral delta — read `references/goal-signal.md` alongside
+  `references/epic-ticket.md` before provisioning it.
 - **Marker absent:** continue with the existing PLAIN/INTEGRATION detection and
   ordinary procedures below.
 
@@ -172,6 +183,10 @@ are in `references/epic-ticket.md`.
    gh pr create --fill --body "Closes #<n>"
    gh pr merge --rebase
    ```
+   When the issue declared a goal, the PR body also carries a
+   `## Goal contribution` section — one row per goal with the measured local
+   signal and its classification, including "no measurable movement"
+   (`references/goal-signal.md`).
 4. **Close out the worktree's Skill Manager home, THEN remove the worktree, then
    sync the project root to the new `main`.** The gate runs *before* the
    removal — after it, there is nothing left to save:
@@ -246,7 +261,9 @@ In short:
    files in the one parent worktree.
 2. Run the **current→desired validation loop** until `specs/current` semantically
    equals `specs/desired_program_model` and every named graph is green
-   (`references/validation-loop.md`).
+   (`references/validation-loop.md`). If the issue declares a goal, run its local
+   signal once those are green, store it with the evidence, and classify it —
+   advisory, never a gate (`references/goal-signal.md`).
 3. Run the **close-out sequence** above: close every spec ticket and the workflow
    via `tla-spec-dev`, commit and push, rebase-merge the PR into `main` via `gh`,
    remove the worktree and sync the project root to the new `main`, and close the
@@ -273,6 +290,7 @@ receiver flow is `references/agent-tag-pr.md`.
 | Running the green loop | `references/validation-loop.md` |
 | Fanning out to sub-repos | `references/integration-fanout.md` |
 | Handed an agent-tagged PR | `references/agent-tag-pr.md` |
+| Handed a ticket that declares a goal, or one whose slice **is** the measurement (`role: evaluation`) | `references/goal-signal.md` |
 
 ## Boundaries
 
@@ -287,3 +305,12 @@ receiver flow is `references/agent-tag-pr.md`.
   (the worktree/fan-out scripts).
 - It never runs per-constituent specs/graphs during a ticket. Constituents
   validate themselves after fan-out, via their agent-tagged PRs.
+- It does not invent goals, baselines, or targets, and it never edits one to
+  match a result. Goals are agreed with the user by `git-issue` /
+  `git-epic-workflow`; this skill consumes what the work order declares.
+- **It does not tune to a metric.** The declared local signal is measured,
+  recorded, and reported — never gated on, never re-run selectively for a better
+  number, never a reason to widen scope past the ticket's slice or weaken a
+  REQUIRED validation entry. Report the run that happened; where a goal turns out
+  to be unreachable from this slice, that is a deferred finding for the plan
+  owner, not extra work for this ticket (`references/goal-signal.md`).

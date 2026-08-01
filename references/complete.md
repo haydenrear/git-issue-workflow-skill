@@ -14,12 +14,25 @@ Edit in the worktree only, never the primary checkout.
   worktree** — `constituents/<name>/...` are plain files here. Do not run git
   inside a constituent directory; there is no `.git` there during the ticket.
 
+If the issue carries a `## Goals & evaluation` section, read it **before** the
+first edit: its expected effect is the result this change is aiming at, and
+reading it afterwards means every design choice was already made without it.
+`N/A: <reason>` means this issue has no measurable outcome — nothing to run,
+nothing to report beyond saying so. See `references/goal-signal.md`.
+
 ## 2. Run the validation loop to green
 
 Drive `specs/current` → `specs/desired_program_model` with all four layers green,
 per `references/validation-loop.md`. For an integration repo this loop runs **at
 the parent only**. Do not exit this step until the loop's definition-of-done is
 fully checked.
+
+When the issue declares a goal, also run its local signal once the four layers
+are green — the loop's advisory fifth layer. Store the output under the ticket's
+evidence path and classify it (moved as expected / moved less than expected / no
+measurable movement / moved the wrong way). It is recorded and reported, never
+green-or-red: the four layers decide whether this ticket passes, and the issue's
+named evaluation decides the goal.
 
 ## 3. Close the spec workflow
 
@@ -61,9 +74,24 @@ is actually on `main`.
 git push -u origin feature/<ticket>
 gh pr create --fill --body "Closes #<n>
 
-Graphs run: <named graphs incl. specWorkflow>. Reports attached to the spec ticket."
+Graphs run: <named graphs incl. specWorkflow>. Reports attached to the spec ticket.
+
+## Goal contribution
+
+| Goal | Contribution | Expected effect | Measured local signal | Decided by |
+| --- | --- | --- | --- | --- |
+| <goal> | direct | <expected effect> | <value + classification> — <evidence path> | <evaluation issue, or this issue's own harness run> |"
 gh pr merge --rebase
 ```
+
+One row per goal the issue declared, including any whose signal was
+`N/A: <reason>`; `None declared` when the issue declared none, so a reader can
+tell that apart from a goal that was ignored. "No measurable movement" and "moved
+the wrong way" are reported, not omitted — and neither is a reason to hold the
+PR, tune the change, or re-run until the number improves
+(`references/goal-signal.md`). An issue whose own slice **is** the measurement
+reports `## Goal verdicts` instead: baseline → measured → target with a `met` /
+`missed` / `unmeasured` verdict.
 
 If the rebase merge is blocked (required review, branch protection, merge
 conflict), stop and surface that instead of forcing it — don't bypass a real gate.
@@ -220,11 +248,14 @@ its *own* spec/test-graph loops downstream. Do this now via
 ## Close-out checklist
 
 - [ ] Implemented in the worktree (parent worktree for integration)
+- [ ] Issue's `## Goals & evaluation` section read before implementing (or `N/A`)
 - [ ] Validation loop green
+- [ ] Declared local signal run, stored with the evidence, and classified
 - [ ] Every ticket closed via `tla-spec-dev`; spec workflow promoted and closed
 - [ ] Test-graph reports attached to the in-repo spec ticket
 - [ ] Committed and pushed to `feature/<ticket>`
 - [ ] PLAIN: PR opened with `Closes #<n>`, rebase-merged into `main` via `gh pr merge --rebase`, merge verified
+- [ ] PR body carries `## Goal contribution` (or `None declared`)
 - [ ] INTEGRATION: parent merged to main and `verify.sh` clean
 - [ ] `home close-out` run and clean (or every blocker cleared by `home sync --merge` / `unit publish`) **before** any removal
 - [ ] Any skill improvement made inside the worktree's home published to that unit's own repo
