@@ -31,12 +31,16 @@ Use `git-integration-repo`'s `propagate.sh`. It is a dry run by default — insp
 before pushing.
 
 ```bash
-INT=<git-integration-repo-skill>/scripts
+INT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts"
 
-$INT/propagate.sh <ticket>              # DRY RUN: branch + commit per changed constituent
-$INT/propagate.sh <ticket> --push       # also push feature/<ticket> to each origin
-$INT/propagate.sh <ticket> --push --mr   # also open a PR/MR per constituent + one tracking issue
+"$INT/propagate.sh" <ticket>              # DRY RUN: branch + commit per changed constituent
+"$INT/propagate.sh" <ticket> --push       # also push feature/<ticket> to each origin
+"$INT/propagate.sh" <ticket> --push --mr  # also open a PR/MR per constituent + one tracking issue
 ```
+
+(`"$WT" info <ticket>` prints this same `propagate.sh` invocation as its
+`PROPAGATE` key, resolved to an absolute path, for a worktree that already
+exists.)
 
 Per changed constituent it: detects the change (skips unchanged ones), creates or
 switches to `feature/<ticket>`, commits the slice, pushes with `--push`, and opens

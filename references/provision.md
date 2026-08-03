@@ -63,76 +63,74 @@ touches the worktree:
    `git update-ref refs/index-bases/<repo-id>/<tree_oid> <commit_oid> ""`
    (empty old-value = compare-and-swap create; an existing ref pointing at a
    different commit is a hard error). Reserved namespace — never public tags.
-4. **Branch from the pinned commit.** Create the feature branch from
-   `<commit_oid>` (equivalently `git worktree add --detach` then branch), so
-   the worktree base stays the pinned object even if the source branch
-   advances.
+4. **Branch from the pinned commit.** Pass `<commit_oid>` as `wt new`'s optional
+   base argument (verified: `wt new <ticket> <commit_oid>` puts the worktree's
+   HEAD on exactly that object), so the worktree base stays the pinned object
+   even if the source branch advances.
 
 Repos onboarded to an index platform (e.g. commit-diff-context snapshot
 branching) consume these OIDs as the immutable base-snapshot identity. The
 conventions hold even where no indexer runs — worktrees stay reproducible.
 
-### PLAIN repo
+### One command, both repo shapes
+
+The worktree and its own Skill Manager home are created **together**, by one
+command, whether this is a plain repo or an integration repo. `wt` detects which
+it is standing in; you do not pass a flag for it.
+
+A worktree with no home of its own runs the operator's global `~/.skill-manager`,
+which every other agent and every other worktree is also writing — so a bare
+`git worktree add` here is not a shorter route to the same place, it is a
+different and worse outcome. `wt new` is what closes that window.
 
 ```bash
+# The front door. An installed unit's files live at $SKILL_MANAGER_HOME/skills/<unit>/;
+# the :- fallback is what makes this line work from a bare shell too.
+WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+
 git fetch origin
 test -z "$(git status --porcelain)" || { echo "dirty tree — reconcile first"; exit 1; }
 commit_oid=$(git rev-parse origin/main)              # use the repo's default branch
 tree_oid=$(git rev-parse "origin/main^{tree}")
 git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/${tree_oid}" "$commit_oid" ""
-git worktree add ../wt-<ticket> -b feature/<ticket> "$commit_oid"
-cd ../wt-<ticket>
+
+"$WT" new <ticket> "$commit_oid"
+# -> created worktree /path/to/<repo>-<ticket>
+cd /path/to/<repo>-<ticket>                          # the path it just printed
 ```
 
-### INTEGRATION repo
+**Read the worktree path off the output.** It is
+`<parent>/<repo-name>-<ticket>`, placed beside the *outermost* enclosing
+integration repo so a nested repo's worktree never lands in a parent's
+`constituents/`. It is not `../wt-<ticket>`; do not assume a path and `cd` into
+one that does not exist.
 
-Use `git-integration-repo`'s script — it creates the parent worktree with every
-constituent's files as **plain files** (no constituent `.git` inside), which is
-exactly what lets you edit and validate across sub-repos from one place. Requires
-a clean parent tree.
-
-```bash
-INT=<git-integration-repo-skill>/scripts
-$INT/new-change.sh <ticket>          # -> ../<repo>-<ticket> on feature/<ticket>
-cd ../<repo>-<ticket>
-```
-
-Do **not** create per-constituent branches now. Constituent-level git happens
-only at fan-out, after the change merges back to the integration main tree.
-
-### Give the worktree its own Skill Manager home
-
-Provisioning is not finished when the worktree exists. A worktree with no home of
-its own runs the operator's global `~/.skill-manager`, which every other agent
-and every other worktree is also writing. That is the state this step removes.
-
-**INTEGRATION:** `new-change.sh` already did it — it bootstraps every worktree it
-creates, before it returns. Confirm rather than repeat:
-
-```bash
-test -d ../<repo>-<ticket>/.skill-manager && echo "home present"
-```
-
-**PLAIN:** do it now, before running anything that installs, syncs, binds, or
-resolves:
-
-```bash
-<git-integration-repo-skill>/scripts/bootstrap-home.sh --root ../wt-<ticket>
-```
-
-Some repository roots carry a `scripts/agent-home.sh` locator that finds the skill
-for you. Check before assuming it — it is not part of onboarding and most
-repositories do not have one:
-
-```bash
-test -x scripts/agent-home.sh && echo "use it" || echo "call bootstrap-home.sh directly"
-```
+**The one refusal to expect.** In a repository that has never been given a home,
+`wt new` exits **3** with `no project home yet` and prints an absolute, already
+resolved `fix:` line. Run that line verbatim, then re-run the same `wt new`. It
+is a one-time step **per repository**, not per worktree — and it is why nothing
+here needs a `scripts/agent-home.sh` locator copied into the repo, or any other
+way of working out where a skill lives on disk.
 
 **Ordering is not a style preference.** `install`, `sync`, `bind`, `upgrade` and
 `project resolve` all write into whatever `SKILL_MANAGER_HOME` names, and before
 the local home exists that is the operator's global home — `project resolve`
-additionally writes a child-home record and a projection ledger into it. Create
-the home, let it export `SKILL_MANAGER_HOME`, and only then run any of those.
+additionally writes a child-home record and a projection ledger into it. `wt new`
+creates the home before it returns, so simply do not run any of those until it
+has.
+
+### What differs by repo shape
+
+Not the command — only what the worktree contains and what happens at the end:
+
+- **PLAIN:** one worktree, one feature branch, one PR.
+- **INTEGRATION:** the parent worktree holds every constituent's files as **plain
+  files** (no constituent `.git` inside), which is what lets you edit and validate
+  across sub-repos from one place. `wt new` requires a clean parent tree. Do
+  **not** create per-constituent branches now — constituent-level git happens only
+  at fan-out, after the change merges back to the integration main tree.
+  `"$WT" info <ticket>` additionally prints a `PROPAGATE` key here; in a plain
+  repo it does not exist.
 
 The home is a **copy** of the project home it was cloned from, not a link, so two
 tickets in two worktrees cannot overwrite each other's skills. It is also
@@ -142,7 +140,7 @@ than a courtesy: nothing you put in it appears in any diff. Launch agents throug
 contract applies; do not export the variables by hand.
 
 Full mechanism, the `live`/`frozen` policy, and teardown:
-`<git-integration-repo-skill>/references/skill-homes.md`.
+`${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/references/skill-homes.md`.
 
 > Why "depend on the same ones": every constituent branch, the parent branch, the
 > MR title prefix, and the tracking issue all key off `<ticket>`. A single id
@@ -186,9 +184,11 @@ challenge it only if you discover state-machine surface it missed
 
 Provisioning is done when:
 
-- [ ] Worktree exists on `feature/<ticket>` (parent worktree for integration).
+- [ ] Worktree exists on `feature/<ticket>` (parent worktree for integration),
+      created by `wt new` at the path it printed.
 - [ ] Worktree has its own `.skill-manager` home, and nothing mutating ran before
-      it existed.
+      it existed. (`wt new` does both; confirm with
+      `test -d <printed-path>/.skill-manager`.)
 - [ ] PLAIN vs INTEGRATION recorded; constituents/host noted if integration.
 - [ ] Spec workflow opened and committed, or explicitly marked N/A with a reason.
 - [ ] The issue's named regression graphs are captured for role 3.

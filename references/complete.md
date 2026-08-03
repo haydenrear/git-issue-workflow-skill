@@ -111,9 +111,9 @@ Merge the parent feature branch back into the integration **main** tree, then le
 still wired — this is how you confirm the change landed properly across the parent:
 
 ```bash
-INT=<git-integration-repo-skill>/scripts
+INT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts"
 git -C <repo-root> merge --no-ff feature/<ticket>
-$INT/verify.sh                 # parent tree clean + every constituent has its .git + origin
+"$INT/verify.sh"               # parent tree clean + every constituent has its .git + origin
 ```
 
 A dirty tree or an unwired constituent here means the merge is not safe to fan out
@@ -186,13 +186,21 @@ them prints blockers:
 Use `--json` when you want to act on `.blockers[]` programmatically. The command
 writes nothing and is safe to re-run after each remedy.
 
-**INTEGRATION repos** run the wrapper instead, which does the gate and the removal
-in the right order and refuses (exit 4) on a non-zero verdict:
+Prefer the wrapper in **both** repo shapes — it does the gate and the removal in
+the right order and refuses (exit 4) on a non-zero verdict:
 
 ```bash
-INT=<git-integration-repo-skill>/scripts
-$INT/close-change.sh <ticket>              # add --dry-run to just ask
+WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+"$WT" close <ticket>                       # add --dry-run to just ask
 ```
+
+`wt close` forwards to `close-change.sh`; a successful close prints one line
+naming the worktree, the branch that outlives it, and the home tier its skill
+work reached. `--dry-run` and `--force` print the full key set instead. It
+resolves the ticket by searching where ticket worktrees live, so it runs from a
+checkout other than the one that opened the worktree — but it must be run from
+inside **some** git repository (from a non-repo directory it exits 1 with
+`not inside a git repository`).
 
 `close-change.sh --force` still runs the gate and still prints every blocker; it
 only declines to stop, and it says the work is being discarded. It exists so that

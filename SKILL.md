@@ -153,11 +153,15 @@ when the repo root carries the `git-integration-repo` markers:
 test -f INTEGRATION.md && test -f integration.toml && echo INTEGRATION || echo PLAIN
 ```
 
-- **PLAIN repo** → one worktree, one feature branch, one PR. Use plain `git
-  worktree` and `gh`.
+- **PLAIN repo** → one worktree, one feature branch, one PR; `gh` for the PR.
 - **INTEGRATION repo** → one parent worktree spanning constituents, the spec/graph
-  loop at the parent only, then fan-out to per-constituent branches + PRs. Use
-  `git-integration-repo`'s scripts (`new-change.sh`, `propagate.sh`, `verify.sh`).
+  loop at the parent only, then fan-out to per-constituent branches + PRs
+  (`propagate.sh`, `verify.sh`).
+
+**The worktree itself is the same command in both.** `wt new` creates the
+worktree *and* its Skill Manager home, and detects which repo shape it is
+standing in, so this fork does not reach worktree creation — it decides the
+spec/graph scope and whether there is a fan-out at the end.
 
 ## Ordinary close-out sequence
 
@@ -191,18 +195,21 @@ are in `references/epic-ticket.md`.
    sync the project root to the new `main`.** The gate runs *before* the
    removal — after it, there is nothing left to save:
    ```bash
-   # 4a. Does this worktree still hold work that removing it would destroy?
-   #     The `&&` is load-bearing. Two commands on separate lines run the second
-   #     one whatever the first returned, which is exactly the loss this gate
-   #     exists to prevent.
-   skill-manager home close-out --home ../wt-<ticket>/.skill-manager \
-                                --into <repo-root>/.skill-manager \
-     && git worktree remove ../wt-<ticket>
+   # 4a. One command, both repo shapes: it runs the gate and, only on a clean
+   #     verdict, removes the worktree. Prefer it to spelling the two steps out —
+   #     two commands on separate lines run the removal whatever the gate
+   #     returned, which is exactly the loss the gate exists to prevent.
+   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+   "$WT" close <ticket>
 
    # 4b. Only once that succeeded:
    git -C <repo-root> checkout main && git -C <repo-root> pull origin main
    git -C <repo-root> worktree prune
    ```
+   Underneath, 4a is `skill-manager home close-out --home <worktree>/.skill-manager
+   --into <repo-root>/.skill-manager && git worktree remove <worktree>`; run it
+   that way only when you need to pass a flag `wt close` does not forward, and
+   keep the `&&`.
    Exit 0 is the only one that means "proceed". The three non-zero exits are not
    interchangeable and only the first prints blockers:
    - **1** — the worktree still holds work. Every blocking unit is named with the
@@ -213,10 +220,9 @@ are in `references/epic-ticket.md`.
      because nothing was assessed.
    - **9** — the destination home is `frozen`, so the gate was refused and
      **nothing was attempted**. Not a verdict about your work.
-   In an **integration repo**, run `close-change.sh` instead of 4a+4b — it runs
-   the same gate, refuses on a non-zero verdict (exit 4), and only then removes
-   the worktree. Details and the `--force` semantics are in
-   `references/complete.md` step 6.
+   `wt close` is the same wrapper in both repo shapes (it forwards to
+   `close-change.sh`, which refuses on a non-zero verdict with exit 4). Details
+   and the `--force` semantics are in `references/complete.md` step 6.
 5. **Close the GitHub issue with `gh`.** A `Closes #<n>` merge usually closes it
    automatically — confirm that, don't assume it, and close it explicitly if not:
    ```bash
@@ -244,9 +250,16 @@ Full flow in `references/provision.md`. In short:
 3. Create the worktree + `feature/<ticket>`, applying the index-base pinning
    conventions in `references/provision.md` §3 (clean tree; resolve the base
    rev to commit/tree OIDs once; create-only `refs/index-bases/*` retention
-   ref; branch from the pinned commit):
-   - PLAIN: `git worktree add ../wt-<ticket> -b feature/<ticket> <commit_oid>`.
-   - INTEGRATION: `<git-integration-repo>/scripts/new-change.sh <ticket>`.
+   ref; branch from the pinned commit). **One command, both repo shapes** — it
+   creates the worktree and its own Skill Manager home together, which a bare
+   `git worktree add` does not:
+   ```bash
+   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+   "$WT" new <ticket> "$commit_oid"      # prints: created worktree <path>
+   ```
+   `cd` to the path it printed — it is `<parent>/<repo>-<ticket>`, not
+   `../wt-<ticket>`. If it exits 3 with "no project home yet", run the absolute
+   `fix:` line it prints (once per repository) and re-run.
 4. If the issue's Spec-workflow section is REQUIRED, open the spec workflow **now**,
    on the fresh branch: `tla-spec-dev --spec-root specs scaffold workflow <ticket>
    "<title>"` then `tla-spec-dev --spec-root specs open ticket <ticket>`. Commit the
