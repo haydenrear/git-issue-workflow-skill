@@ -30,13 +30,24 @@ and the receiving agent runs exactly that loop via `references/agent-tag-pr.md`.
 Use `git-integration-repo`'s `propagate.sh`. It is a dry run by default — inspect
 before pushing.
 
-```bash
-INT=<git-integration-repo-skill>/scripts
+**This is the one step that needs the `git-integration-repo` unit installed**, and
+it is reached only in an integration repo — whose own `skill-project.toml`
+declares that unit, so the file is there wherever this page applies. A plain-repo
+ticket never gets here and never needs it. (If it is genuinely missing,
+`skill-manager install github:haydenrear/git-integration-skill` is what `wt`
+prints in place of the `PROPAGATE` key.)
 
-$INT/propagate.sh <ticket>              # DRY RUN: branch + commit per changed constituent
-$INT/propagate.sh <ticket> --push       # also push feature/<ticket> to each origin
-$INT/propagate.sh <ticket> --push --mr   # also open a PR/MR per constituent + one tracking issue
+```bash
+INT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts"
+
+"$INT/propagate.sh" <ticket>              # DRY RUN: branch + commit per changed constituent
+"$INT/propagate.sh" <ticket> --push       # also push feature/<ticket> to each origin
+"$INT/propagate.sh" <ticket> --push --mr  # also open a PR/MR per constituent + one tracking issue
 ```
+
+(`"$WT" info <ticket>` prints this same `propagate.sh` invocation as its
+`PROPAGATE` key, resolved to an absolute path, for a worktree that already
+exists.)
 
 Per changed constituent it: detects the change (skips unchanged ones), creates or
 switches to `feature/<ticket>`, commits the slice, pushes with `--push`, and opens

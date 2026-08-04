@@ -108,17 +108,36 @@ tree_oid=$(git rev-parse "origin/epic/<slug>^{tree}")
 git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/${tree_oid}" "$commit_oid" ""
 git worktree add ../wt-<issue-number>-<slug> \
   -b feature/<issue-number>-<slug> "$commit_oid"
+
+# `git worktree add` creates a checkout with NO Skill Manager home, so an agent
+# launched here would read and write the operator's global ~/.skill-manager.
+# Close that window before anything that installs, syncs, binds or resolves:
+"${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/bootstrap-home.sh" \
+  --root ../wt-<issue-number>-<slug>
+
 cd ../wt-<issue-number>-<slug>
 ```
+
+**Why this is the one place that still branches by hand.** Ordinary tickets use
+`wt new <ticket> "$commit_oid"`, which creates the worktree *and* its home in one
+step — but it puts the worktree at `<parent>/<repo>-<ticket>`, and an epic
+assignment **declares** the worktree path and the branch. The assignment wins, so
+the worktree is created by hand at the declared path and the home is bootstrapped
+as its own second step. That is the only difference — the home the two routes
+produce is identical, and **teardown is the same one command**, because
+`wt close` resolves a ticket by searching for `<parent>/*-<ticket>` rather than
+by the name `wt new` would have chosen:
+`"$WT" close <issue-number>-<slug>` (verified against a hand-made
+`../wt-<issue-number>-<slug>`).
 
 If the feature branch already exists legitimately, attach or enter its declared
 worktree and reconcile it with the latest `origin/epic/<slug>` instead of running
 the creation command again. Preserve any assigned work already present.
 
 Never start an epic ticket from `origin/main`, another default branch, the stale
-`base_sha`, or a sibling ticket branch. Do not use the ordinary integration
-`new-change.sh` flow or create per-constituent branches: the epic assignment owns
-the branch topology for this ticket.
+`base_sha`, or a sibling ticket branch. Do not use the ordinary `wt new` flow or
+create per-constituent branches: the epic assignment owns the branch topology for
+this ticket.
 
 ## 3. Open only the assigned spec ticket
 
