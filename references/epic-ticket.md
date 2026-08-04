@@ -112,7 +112,7 @@ git worktree add ../wt-<issue-number>-<slug> \
 # `git worktree add` creates a checkout with NO Skill Manager home, so an agent
 # launched here would read and write the operator's global ~/.skill-manager.
 # Close that window before anything that installs, syncs, binds or resolves:
-"${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/bootstrap-home.sh" \
+"${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/bootstrap-home.sh" \
   --root ../wt-<issue-number>-<slug>
 
 cd ../wt-<issue-number>-<slug>

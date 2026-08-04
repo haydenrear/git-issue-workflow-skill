@@ -30,6 +30,13 @@ and the receiving agent runs exactly that loop via `references/agent-tag-pr.md`.
 Use `git-integration-repo`'s `propagate.sh`. It is a dry run by default — inspect
 before pushing.
 
+**This is the one step that needs the `git-integration-repo` unit installed**, and
+it is reached only in an integration repo — whose own `skill-project.toml`
+declares that unit, so the file is there wherever this page applies. A plain-repo
+ticket never gets here and never needs it. (If it is genuinely missing,
+`skill-manager install github:haydenrear/git-integration-skill` is what `wt`
+prints in place of the `PROPAGATE` key.)
+
 ```bash
 INT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts"
 

@@ -4,7 +4,13 @@ description: >-
   Use when handed a GitHub issue to implement — a pasted issue body, a URL, a bare
   "#N", or `gh issue view` output — or asked to start, pick up, work on,
   complete, or close out a ticket, including one assigned from a shared epic spec
-  workflow. Read BEFORE touching the repo: the issue body is a work order, and the
+  workflow. SHIPS THE WORKTREE FRONT DOOR every ticket in every repo starts and
+  ends with, so never hand-roll one: `scripts/wt new <ticket>` creates the
+  worktree AND its own per-checkout Skill Manager home in one command, and
+  `scripts/wt close <ticket>` tears it down through a gate that refuses while
+  removing it would destroy unpublished skill work. Same command in a plain repo
+  and an integration repo; it detects which. Read BEFORE touching the repo: the
+  issue body is a work order, and the
   `git-epic-workflow:assignment` marker selects a higher-priority epic mode before
   ordinary or integration provisioning. Epic tickets branch from the declared
   `origin/epic/*`, close/promote only their assigned spec ticket with evidence, and
@@ -26,9 +32,6 @@ skill-imports:
   - unit: git-epic-workflow
     path: references/goals-and-evaluation.md
     reason: Source of truth for goal field names and semantics — goal kinds, contribution kinds, baselines, and the evaluation-ticket contract this skill consumes from the assignment's `goals:` block.
-  - unit: git-integration-repo
-    path: references/propagation.md
-    reason: Integration-repo provisioning (worktree, same-named branches) and fan-out (per-constituent branches, MRs, tracking issue) use its scripts and model.
   - unit: spec-double-compiler
     path: SKILL.md
     reason: The spec workflow — open/close ticket, spec-unit-tests, current→desired promotion — runs through the tla-spec-dev CLI this skill installs.
@@ -44,6 +47,60 @@ skill-imports:
 ---
 
 # git-issue-workflow
+
+## The one command: `wt`
+
+Before anything else, because it is the first thing every ticket does and the
+last thing every ticket does:
+
+```bash
+WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/wt"
+
+"$WT" new   <ticket>     # worktree + its OWN Skill Manager home, launchable
+"$WT" close <ticket>     # teardown, through the close-out gate
+```
+
+That is the whole happy path, and it costs one line of output each:
+
+```
+created worktree /path/to/<repo>-<ticket>
+closed worktree /path/to/<repo>-<ticket> (branch feature/<ticket> kept; home work went no further than /path/to/repo/.skill-manager — push skill edits from there)
+```
+
+**`cd` to the path `new` printed.** It is `<parent>/<repo>-<ticket>`, not
+`../wt-<ticket>`, so do not guess it. `wt` is **not on `PATH`** — the spelling
+above is a path that resolves, which is why it is written out; an installed
+unit's files live at `$SKILL_MANAGER_HOME/skills/<unit>/`, and the `:-` fallback
+makes the same line work from a bare shell.
+
+**Do not substitute `git worktree add`.** It produces a worktree with no Skill
+Manager home, and an agent launched there writes the operator's global
+`~/.skill-manager`. Do not substitute `git worktree remove` either: it deletes
+the home, and every unpushed skill edit in it, without a word.
+
+A failure is three lines, and the second runs **as printed**:
+
+```
+error creating worktree: no Skill Manager home could be created for this worktree (usually: /path/to/repo has no project home yet)
+fix: /path/to/home/skills/git-issue-workflow/scripts/bootstrap-home.sh --root /path/to/repo
+log: /tmp/wt-XXXXXX-run.log
+```
+
+Exit **3** with "no project home yet" is the common one, on the first ticket in
+a repository that has never been given a home. Run the `fix:` line verbatim —
+once per repository, not per worktree — and re-run `wt new`.
+
+Everything else is on demand and costs nothing until asked:
+`"$WT" info <ticket>` prints WORKTREE / BRANCH / LAUNCH / IF-EXIT-8 / CLOSE (and
+PROPAGATE, only in an integration repo). `references/worktrees.md` explains why
+each line is what it is; the happy path does not need it.
+
+**This is the same command in a plain repo and an integration repo**, and in a
+constituent of one — `wt` detects which it is standing in. A repo with no
+constituents needs nothing else installed: `git-integration-repo` is a
+*specialization* for repos that have them, and nothing above touches it.
+
+---
 
 The **implementer side** of `git-issue`. A work order created by the `git-issue`
 skill names the moves — worktree, spec workflow, regression graphs, close-out.
@@ -199,7 +256,7 @@ are in `references/epic-ticket.md`.
    #     verdict, removes the worktree. Prefer it to spelling the two steps out —
    #     two commands on separate lines run the removal whatever the gate
    #     returned, which is exactly the loss the gate exists to prevent.
-   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/wt"
    "$WT" close <ticket>
 
    # 4b. Only once that succeeded:
@@ -254,7 +311,7 @@ Full flow in `references/provision.md`. In short:
    creates the worktree and its own Skill Manager home together, which a bare
    `git worktree add` does not:
    ```bash
-   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+   WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/wt"
    "$WT" new <ticket> "$commit_oid"      # prints: created worktree <path>
    ```
    `cd` to the path it printed — it is `<parent>/<repo>-<ticket>`, not
@@ -304,6 +361,8 @@ receiver flow is `references/agent-tag-pr.md`.
 | Fanning out to sub-repos | `references/integration-fanout.md` |
 | Handed an agent-tagged PR | `references/agent-tag-pr.md` |
 | Handed a ticket that declares a goal, or one whose slice **is** the measurement (`role: evaluation`) | `references/goal-signal.md` |
+| Wondering *why* `wt` prints what it prints | `references/worktrees.md` |
+| Working on, or debugging, a per-checkout Skill Manager home | `references/skill-homes.md` |
 
 ## Boundaries
 
@@ -312,10 +371,20 @@ receiver flow is `references/agent-tag-pr.md`.
 - It does not create or amend an epic assignment. In epic mode it consumes the
   marker-delimited assignment exactly as written and stops when required fields
   or scheduling state are inconsistent.
-- It does not reimplement the spec, test-graph, or integration mechanics — it
-  **sequences** them. The mechanics live in `spec-double-compiler` (the
-  `tla-spec-dev` CLI), `test-graph` (the graph scripts), and `git-integration-repo`
-  (the worktree/fan-out scripts).
+- It does not reimplement the spec, test-graph, or fan-out mechanics — it
+  **sequences** them. Those live in `spec-double-compiler` (the `tla-spec-dev`
+  CLI), `test-graph` (the graph scripts), and `git-integration-repo`
+  (`propagate.sh`, `verify.sh` — the constituent fan-out, needed only in an
+  integration repo).
+- The **worktree lifecycle it does own**: `scripts/wt`, `scripts/new-change.sh`,
+  `scripts/close-change.sh`, `scripts/bootstrap-home.sh`, `scripts/agent-home.sh`
+  and `scripts/lib.sh` are this skill's, because a ticket and a worktree exist for every repo while an
+  integration repository is a specialization that exists only when a repo has
+  constituents. They used to live in `git-integration-repo`, and an agent
+  working a plain repo — reading that skill's description, correctly concluding
+  it was irrelevant — never learned `wt` existed and wrote its own worktree
+  script instead. The dependency runs specialized → general:
+  `git-integration-repo` → `git-issue-workflow` → `git-issue`.
 - It never runs per-constituent specs/graphs during a ticket. Constituents
   validate themselves after fan-out, via their agent-tagged PRs.
 - It does not invent goals, baselines, or targets, and it never edits one to

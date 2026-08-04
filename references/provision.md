@@ -86,7 +86,7 @@ different and worse outcome. `wt new` is what closes that window.
 ```bash
 # The front door. An installed unit's files live at $SKILL_MANAGER_HOME/skills/<unit>/;
 # the :- fallback is what makes this line work from a bare shell too.
-WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/wt"
 
 git fetch origin
 test -z "$(git status --porcelain)" || { echo "dirty tree — reconcile first"; exit 1; }
@@ -109,7 +109,7 @@ one that does not exist.
 `wt new` exits **3** with `no project home yet` and prints an absolute, already
 resolved `fix:` line. Run that line verbatim, then re-run the same `wt new`. It
 is a one-time step **per repository**, not per worktree — and it is why nothing
-here needs a `scripts/agent-home.sh` locator copied into the repo, or any other
+here needs an `agent-home.sh` locator copied into the repo, or any other
 way of working out where a skill lives on disk.
 
 **Ordering is not a style preference.** `install`, `sync`, `bind`, `upgrade` and

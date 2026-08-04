@@ -7,7 +7,6 @@
 # skill names — the resolver clones the repo and detects the unit from its root
 # marker files. The repo name usually differs from the [skill].name it installs:
 #
-#   github:haydenrear/git-integration-skill -> skill "git-integration-repo"  (worktree + fan-out scripts)
 #   github:haydenrear/test_graph_skill      -> skill "test-graph"            (validation graphs)
 #   github:haydenrear/tla-spec-dev          -> skill "spec-double-compiler"  (installs the tla-spec-dev CLI)
 #   github:haydenrear/deploy-cdc            -> skill "deploy-helm"           (deployable-surface validation)
@@ -15,8 +14,28 @@
 # git-issue itself is a *semantic* import only (see SKILL.md skill-imports): the
 # work order is read via gh, so completing a ticket does not require the git-issue
 # skill to be installed. Do not add it here just because the two are paired.
+#
+# git-integration-skill IS DELIBERATELY NOT HERE ANY MORE.
+#
+# It used to be, because integration provisioning ran that unit's `scripts/wt`.
+# Those scripts now ship HERE — `wt`, new-change.sh, close-change.sh,
+# bootstrap-home.sh, agent-home.sh, lib.sh — because a ticket and a worktree
+# exist for every repo while an integration repository is a specialization, and
+# an agent selects a skill by its description. The arrow reversed with them:
+#
+#   git-integration-repo  ->  git-issue-workflow  ->  git-issue
+#
+# git-integration-repo now hard-references THIS unit. Listing it here as well
+# would close that into a cycle, and it would make every plain-repo ticket pull
+# in onboarding, propagation and fan-out it will never run.
+#
+# What still needs it is one file on the FAN-OUT path only:
+# `$SKILL_MANAGER_HOME/skills/git-integration-repo/scripts/propagate.sh`, named
+# by references/integration-fanout.md and by `wt`'s PROPAGATE key. That path is
+# only ever reached in an integration repo, whose own skill-project.toml
+# declares the unit, so the file is present exactly where it is used. `wt` emits
+# the install command instead of a dead path when it is not.
 skill_references = [
-  "github:haydenrear/git-integration-skill",
   "github:haydenrear/test_graph_skill",
   "github:haydenrear/tla-spec-dev",
   "github:haydenrear/deploy-cdc",

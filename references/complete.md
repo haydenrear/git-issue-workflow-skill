@@ -190,7 +190,7 @@ Prefer the wrapper in **both** repo shapes — it does the gate and the removal 
 the right order and refuses (exit 4) on a non-zero verdict:
 
 ```bash
-WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-integration-repo/scripts/wt"
+WT="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts/wt"
 "$WT" close <ticket>                       # add --dry-run to just ask
 ```
 

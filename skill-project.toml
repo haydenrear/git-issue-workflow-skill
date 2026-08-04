@@ -16,9 +16,14 @@
 # ~/.skill-manager. Create the local home first, point `SKILL_MANAGER_HOME` at
 # it, and only then resolve:
 #
-#   mkdir -p .skill-manager/skills
+# No `mkdir` first: bootstrap-home.sh creates the home, and `home clone`
+# requires an absent or empty destination, so pre-creating it breaks the very
+# first step (measured both ways: without --force it refuses a non-empty
+# directory; with --force it skips the clone and `home policy --live` then
+# refuses a directory that is not a home).
+#
 #   SKILL_MANAGER_CLI=<epic skill-manager> \
-#     bash <git-integration-repo>/scripts/bootstrap-home.sh --root "$PWD" --force
+#     bash scripts/bootstrap-home.sh --root "$PWD" --force
 #   export SKILL_MANAGER_HOME="$PWD/.skill-manager"
 #   skill-manager project resolve --project-dir "$PWD" --skip-gateway
 #
