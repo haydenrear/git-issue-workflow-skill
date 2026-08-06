@@ -1,7 +1,8 @@
 # Goals, local signals, and evaluation tickets
 
 A work order says what to change. A **goal** says what should be measurably
-better once it is changed, and names the command that decides it. This reference
+better once it is changed, and names the instrument that decides it — usually a
+command, sometimes an artifact judged against a versioned rubric. This reference
 is the implementer's half of that contract: what to read before implementing,
 what to run during validation, what to report, and — for a ticket whose whole
 slice *is* the measurement — how to run and report the goal itself.
@@ -25,7 +26,7 @@ not apply; say so at close-out and move on.
 
 Both shapes carry the same five things, and those five are all this skill needs:
 the goal, how this ticket relates to it, what result the change should produce,
-what cheap command predicts that result here, and who decides the goal for real.
+what cheap signal predicts that result here, and who decides the goal for real.
 
 ## Field reference
 
@@ -38,16 +39,16 @@ Assignment `goals[]` entries on an implementation ticket:
 | `statement` | What should be measurably better after the epic. |
 | `metric` | The measured quantity. |
 | `baseline` | Today's value plus the commit it was measured on, or `unmeasured`. |
-| `target` | The threshold that counts as success. |
+| `target` | What counts as success: a threshold, several clauses, or an explicit statement that there is deliberately no threshold on the number. |
 | `decided_by.ticket` | The `role: evaluation` ticket that decides this goal. |
-| `decided_by.harness` | The command that ticket runs on the integrated epic. |
+| `decided_by.harness` | The instrument that ticket runs on the integrated epic — a command, or a judged procedure and its rubric. |
 | `contribution` | `direct` \| `enabling` \| `guard`. |
 | `expected_effect` | Direction and magnitude **this ticket** should produce. |
 | `local_signal` | A cheap in-worktree command, or `N/A: <reason>`. |
 
 An evaluation ticket carries `role: evaluation` and `owns_goals: [...]` under
 `ticket:`, and its `goals[]` entries replace `decided_by` with `harness` and
-`evidence_root` — the command it runs and where its results land.
+`evidence_root` — the instrument it runs and where its results land.
 
 The canonical plan spells the same facts differently, which matters only for the
 equality check in `references/epic-ticket.md` §1: the plan holds goal metadata
@@ -191,7 +192,7 @@ decides the goals in its `owns_goals` list. Everything in
 
 ### It measures the integrated tip, from a fresh start
 
-For each goal in `owns_goals`, run that goal's `harness` — the exact command,
+For each goal in `owns_goals`, run that goal's `harness` — the exact instrument,
 unmodified — on the reconciled epic tip after §5's rebase/merge, from a clean
 start: no warm caches carried from a previous attempt, no partially-completed
 run resumed, no node re-run in isolation. Write results under the goal's
@@ -201,18 +202,62 @@ find every measurement of a goal in one place).
 A harness that fails to run is `unmeasured` with the reason. It is not a zero,
 and it is not silently omitted.
 
+### When the instrument is judged rather than executed
+
+Some goals are decided by an artifact scored against a versioned rubric, by
+judges who must cite the artifact. `tla-spec-dev` decides its epic goals this
+way deliberately, and its reasoning is worth knowing before you treat it as a
+lesser instrument: *"A number computed from the artifact can be optimized by
+editing the artifact. A judgement that must cite the artifact can only be
+satisfied by changing what the artifact is."*
+
+You run it the same way you run any other harness — unmodified, on the
+reconciled tip, from a fresh start, results under the goal's `evidence_root` —
+with three differences that are the instrument's, not yours to decide:
+
+- **The rubric is versioned and the card is scaffolded from it, never
+  hand-written.** Copying a card's shape out of a document is how a dimension
+  key or a required field drifts from the rubric it was copied from.
+- **Blinding, sealing, and comparability are the instrument's rules.** Whether
+  two numbers may be compared at all can depend on whether the instrument itself
+  changed between them. Follow the instrument's documentation; do not reason it
+  out yourself.
+- **A judged number can move on unchanged input.** Rubrics have measured noise.
+  Where the instrument documents how much, a movement inside that band is not a
+  result, and reporting it as one is the error.
+
+Read that instrument's own reference before running it — for `tla-spec-dev`,
+`references/eval_scorecard.md`. This skill sequences the run; it is not the
+authority on any particular card.
+
 ### It reports baseline → measured → target with a verdict
 
 ```markdown
 ## Goal verdicts
 
-| Goal | Kind | Baseline | Measured | Target | Verdict | Evidence |
-| --- | --- | --- | --- | --- | --- | --- |
-| GOAL-ingest-p99 | perf | p99 412ms, 5.1k events/s @ 8f21c0d | p99 268ms, 5.2k events/s | p99 <= 250ms and throughput >= 5.0k events/s | missed | results/epic-ingest/goals/GOAL-ingest-p99/run.json |
+| Goal | Clause | Kind | Baseline | Measured | Target | Verdict | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| GOAL-ingest-p99 | p99 latency | perf | p99 412ms @ 8f21c0d | p99 268ms | p99 <= 250ms | missed | results/epic-ingest/goals/GOAL-ingest-p99/run.json |
+| GOAL-ingest-p99 | throughput not regressed | perf | 5.1k events/s @ 8f21c0d | 5.2k events/s | >= 5.0k events/s | met | results/epic-ingest/goals/GOAL-ingest-p99/run.json |
 ```
 
 Verdicts are exactly `met`, `missed`, or `unmeasured` (with a reason). Report the
 run that happened.
+
+**One row per clause.** That example used to be a single row reading
+`p99 <= 250ms and throughput >= 5.0k events/s | missed`, which is two claims
+wearing one verdict: the latency clause missed and the throughput clause was
+met, and the row said only "missed". The direction of the error is not random —
+a single token has to pick a clause, and whoever writes it picks the one that
+suits the story. `GOAL-port-reach` in `tla-spec-dev` settled as *clause 1 met,
+clause 2 not met* for exactly this reason. Put `—` in the Clause column when a
+target genuinely has one clause, so the shape is uniform and a missing split is
+visible rather than assumed.
+
+A goal whose target is deliberately not a threshold — the epic was building the
+instrument — still gets a row: `Measured` is what the instrument produced on its
+first real run, `Target` restates the no-threshold decision, and the verdict says
+whether the instrument ran and discriminated.
 
 ### What it must never do
 

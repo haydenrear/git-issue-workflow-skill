@@ -19,8 +19,9 @@ description: >-
   workflow/issue close-out, merge verification, and integration fan-out. A ticket
   that declares a goal reads its expected effect before implementing, runs the
   declared local signal as advisory evidence, and reports goal contribution in the
-  PR; a `role: evaluation` ticket runs the goal harness on the integrated epic tip
-  and reports a met/missed/unmeasured verdict. Trigger
+  PR; a `role: evaluation` ticket runs the goal instrument — a command or a
+  judged rubric — on the integrated epic tip and reports a met/missed/unmeasured
+  verdict per goal clause. Trigger
   on "implement this issue", "complete this ticket", "pick up issue #N", "work
   this epic ticket", "run the evaluation ticket", "open the MR", or "propagate the
   integration change".
