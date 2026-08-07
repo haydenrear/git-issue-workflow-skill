@@ -15,3 +15,7 @@
 .claude/
 .codex/
 .gemini/
+__pycache__/
+*.pyc
+.venv/
+uv.lock
