@@ -9,7 +9,9 @@ description: >-
   worktree AND its own per-checkout Skill Manager home in one command, and
   `scripts/wt close <ticket>` tears it down through a gate that refuses while
   removing it would destroy unpublished skill work. Same command in a plain repo
-  and an integration repo; it detects which. Read BEFORE touching the repo: the
+  and an integration repo; it detects which. The skt plugin's `skt ticket
+  new|close` wraps the same lifecycle, is on PATH in skt-carrying homes, and is
+  preferred when present. Read BEFORE touching the repo: the
   issue body is a work order, and the
   `git-epic-workflow:assignment` marker selects a higher-priority epic mode before
   ordinary or integration provisioning. Epic tickets branch from the declared
@@ -72,6 +74,13 @@ closed worktree /path/to/<repo>-<ticket> (branch feature/<ticket> kept; home wor
 above is a path that resolves, which is why it is written out; an installed
 unit's files live at `$SKILL_MANAGER_HOME/skills/<unit>/`, and the `:-` fallback
 makes the same line work from a bare shell.
+
+**`skt ticket` is the same door, discoverable.** Homes carrying the `skt`
+plugin put `skt` on PATH and disclose it at session start; `skt ticket
+new|close|info <ticket>` imports this skill's Python surface
+(`src/git_issue_workflow/`) and drives the same `wt` underneath — same
+contract, same gate, plus guided remedies on refusal. Prefer it when present;
+everything below remains the source of truth for what it does.
 
 **Do not substitute `git worktree add`.** It produces a worktree with no Skill
 Manager home, and an agent launched there writes the operator's global
