@@ -230,6 +230,15 @@ Read that instrument's own reference before running it — for `tla-spec-dev`,
 `references/eval_scorecard.md`. This skill sequences the run; it is not the
 authority on any particular card.
 
+**Report the scores; never repeat the rubric.** A `## Goal verdicts` row cites
+the sealed card and the rubric version it was scored under, and stops there. Do
+not paste dimensions, anchors, scoring rules or comparability rules into a PR
+body, an issue comment or this skill: the rubric's repository versions them and
+executes checks over them, and a copy anywhere else is covered by nothing. This
+is measured, not hypothetical — a charter in `tla-spec-dev` restated a table of
+judged results and two of its rows were wrong, carried forward across a change
+to the instrument before anyone caught them.
+
 ### It reports baseline → measured → target with a verdict
 
 ```markdown
