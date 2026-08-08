@@ -94,7 +94,8 @@ commit_oid=$(git rev-parse origin/main)              # use the repo's default br
 tree_oid=$(git rev-parse "origin/main^{tree}")
 git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/${tree_oid}" "$commit_oid" ""
 
-"$WT" new <ticket> "$commit_oid"
+skt ticket new <ticket> --base "$commit_oid"   # preferred: on PATH in skt-carrying homes
+"$WT" new <ticket> "$commit_oid"               # the same door where skt is absent
 # -> created worktree /path/to/<repo>-<ticket>
 cd /path/to/<repo>-<ticket>                          # the path it just printed
 ```
