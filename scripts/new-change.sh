@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# new-change.sh <TICKET> [base-branch] [--integration] [--no-home]
+# new-change.sh <TICKET> [base-branch] [--integration] [--no-home] [--stale-base-ok]
 #
 # Create a ticketed worktree, with its own Skill Manager home, for the repo you
 # are standing in.
@@ -50,20 +50,43 @@
 # sometimes not, and the failure is invisible — it just edits the operator's
 # global home instead. Pass --no-home (or INTEGRATION_SKIP_HOME=1) only when
 # you know the worktree will never host an agent.
+#
+# The branch POINT
+# ----------------
+# `git worktree add -b <branch> <path> <base>` resolves a bare `<base>` to the
+# LOCAL ref, and this script never fetched, so it branched from whatever the
+# local ref happened to say. In an epic whose ticket PRs are merged SERVER-SIDE
+# (`gh pr merge`), `origin/epic/<slug>` advances and the local `epic/<slug>`
+# never does — measured: a ticket branched 21 commits behind origin and noticed
+# only because it compared its own HEAD against a SHA written into its work
+# order. Nothing in the run said anything.
+#
+# So the branch point is now MEASURED before the worktree is created (see "the
+# branch point is not stale" below): if the base has a remote counterpart and
+# the local ref is BEHIND it, the run refuses and names the remedy. It is not
+# silently redirected to origin/<base> — branching from a deliberately local
+# state is legitimate — and --stale-base-ok is the one flag that says so.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; . "$SCRIPT_DIR/lib.sh"
 
 usage() {
   cat >&2 <<'EOF'
 usage: new-change.sh <TICKET> [base-branch] [--integration] [--no-home]
+                     [--stale-base-ok]
 
   TICKET          Ticket id. The branch is feature/<TICKET>; the worktree is
                   <repo>-<TICKET>, placed beside the outermost enclosing
                   integration repo.
   base-branch     Branch to start from. Default: the checkout's current branch.
+                  A bare name is the LOCAL ref; see --stale-base-ok.
   --integration   Target the enclosing INTEGRATION repo rather than the
                   constituent you are standing in.
   --no-home       Skip the per-worktree Skill Manager home. Agents launched in
                   the worktree then use the operator's global home.
+  --stale-base-ok Branch from the local base even when it is BEHIND its remote
+                  counterpart. Without it that is a refusal, because a bare base
+                  name resolves to the local ref and a base that trails
+                  origin/<base> produces a worktree of a superseded tree with no
+                  signal at all.
   --quiet         Print nothing at all on stderr. The contract on stdout is
                   unaffected — it is what `wt` shows.
   --verbose       Put the whole log on stderr as it happens, instead of the one
@@ -85,8 +108,18 @@ before the descriptor read was hoisted out of the per-unit loops. Nothing is
 printed until it finishes, so if you expect to wait: pass --verbose, or tail
 the file --log names.
 
-Stdout is the contract and nothing else: WORKTREE / BRANCH / LAUNCH / IF-EXIT-8
-/ CLOSE (/ PROPAGATE) on success, FAILED / FIX on failure. Stderr on a
+THE BASE IS REFRESHED FIRST, and it is ONE REF. Before the worktree is created
+this fetches exactly `+refs/heads/<base>:refs/remotes/<remote>/<base>` from the
+base's own remote — no tags, no other branch — and refuses if the local base is
+then behind it. WT_FETCH=0 skips the fetch and compares against the
+remote-tracking ref as it already stands (offline; and it is what the epic case
+misses, since nothing else advances that ref). WT_FETCH_TIMEOUT (default 10 s)
+bounds a stalled transfer.
+
+Stdout is the contract and nothing else: WORKTREE / BRANCH / BASE / LAUNCH /
+IF-EXIT-8 / CLOSE (/ PROPAGATE, / STALE-BASE) on success, FAILED / FIX on
+failure. BASE is on the creating run only — `--info` measured no branch point —
+and STALE-BASE only when --stale-base-ok was used. Stderr on a
 successful run is one line: the log file holding the narration, this script's
 and bootstrap-home.sh's alike. `wt new <TICKET>` runs this and prints a ONE-LINE
 summary of the contract instead; `wt info <TICKET>` prints the contract itself.
@@ -94,10 +127,16 @@ EOF
 }
 
 TICKET=""; BASE=""; SKIP_HOME="${INTEGRATION_SKIP_HOME:-0}"; WANT_INTEGRATION=0
-QUIET=0; VERBOSE=0; INFO=0; LOG_ARG=""
+QUIET=0; VERBOSE=0; INFO=0; LOG_ARG=""; STALE_OK=0
+# Set only by the creating path, and only once the branch point has been
+# measured. Empty on `--info`, which is answering about a worktree created at
+# some other time by some other run and knows nothing about what it branched
+# from — a BASE key there would be a fact this script did not measure.
+BASE_DESC=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-home)     SKIP_HOME=1; shift ;;
+    --stale-base-ok) STALE_OK=1; shift ;;
     --integration) WANT_INTEGRATION=1; shift ;;
     --quiet)       QUIET=1; shift ;;
     --verbose|-v)  VERBOSE=1; shift ;;
@@ -236,6 +275,22 @@ emit_contract() {
   local wt="$1" branch_desc="$2"
   contract WORKTREE  "$wt"
   contract BRANCH    "$branch_desc"
+  # A MEASUREMENT, so it is a KEY and not a clause on `wt new`'s summary. It was
+  # briefly both, and the summary half is what broke: three anchored parsers in
+  # two other repositories read that line, and one of them then scored a
+  # non-existent path as a PASS. Keys are the interface — every consumer matches
+  # `^KEY<space>` generically, so adding one costs nothing anywhere — and the
+  # one-line summary is prose that nothing should be reading. See `wt`.
+  #
+  # Emitted only by a run that CREATED the worktree. `--info` answers about one
+  # some other run made and measured no branch point, and a BASE there would be
+  # a fact this script did not establish.
+  [ -z "${BASE_DESC:-}" ] || contract BASE "$BASE_DESC"
+  # Only when the override actually fired. Its own key rather than a suffix on
+  # BASE, so that "was this branched from a stale point" is answerable by
+  # presence instead of by sniffing a substring — `wt` turns it into the one
+  # stderr line that acknowledges the flag.
+  [ -z "${STALE_NOTE:-}" ] || contract STALE-BASE "$STALE_NOTE"
   if [ -d "$wt/.skill-manager" ]; then
     contract LAUNCH    "$wt/.skill-manager/bin/launch/claude"
     # The first launch from a fresh home is REFUSED with exit 8 until the change
@@ -364,10 +419,140 @@ assert_worktree_outside_integration "$WT"
 
 : "${BASE:=$(git -C "$ROOT" symbolic-ref --quiet --short HEAD)}"
 
+# ------------------------------------------- the branch point is not stale
+#
+# `git worktree add -b F <path> <BASE>` with a bare BASE resolves the LOCAL ref,
+# and this script had no `git fetch` in it — nor did `wt`, close-change.sh,
+# lib.sh or bootstrap-home.sh. So the worktree started wherever the local ref
+# happened to be, which is fine right up until something else is advancing the
+# branch. In an epic whose ticket PRs are merged server-side, that is the normal
+# case: `gh pr merge` moves `origin/epic/<slug>` and nothing moves the local
+# `epic/<slug>` or even the local COPY of the remote one. Measured: a ticket
+# branched 21 commits behind and caught it only by comparing HEAD against a SHA
+# in its work order. Had it not, it would have edited a superseded file and
+# reported a true sentence about the wrong tree.
+#
+# WHAT IS REFUSED, AND WHAT IS NOT. Not "the base is not origin/<base>" — a
+# deliberately local branch point is a legitimate thing to want, and silently
+# redirecting to the remote would break it without a word, which is the same
+# class of defect in the other direction. What is refused is the base being
+# BEHIND its own remote counterpart, which is never something anyone chose. A
+# base that is AHEAD, EQUAL, or has no counterpart at all is untouched.
+#
+# WHY IT FETCHES, given that `new` runs constantly. Because without one the
+# check is close to vacuous for the case that motivated it: `refs/remotes/origin/
+# <base>` is a LOCAL CACHE, advanced only by a fetch, so a repo that has not
+# fetched since the server-side merge compares the stale local ref against an
+# equally stale copy of the remote and finds them identical. The cost is one ref
+# from one remote, `--no-tags`, no working-tree effect: measured on this machine
+# against GitHub over HTTPS, 0.17-0.22 s on this skill's own repo and 0.48-0.86 s
+# on a larger one — against a command whose OTHER half copies a Skill Manager
+# home for 48 s (see "HOW LONG IT TAKES" above). It is around 1% of the run and
+# the cheapest thing in it. WT_FETCH=0 removes it for anyone offline or on a slow
+# link, at the cost stated in the usage.
+#
+# It cannot HANG, which is the one way a constant-cost command turns unbounded.
+# Auth prompts are the realistic cause and both are shut off (GIT_TERMINAL_PROMPT
+# / BatchMode); a stalled transfer is bounded by git's own low-speed abort rather
+# than by killing the process, because a SIGKILLed fetch can leave a ref lock
+# behind and the remedy for that would be worse than the problem.
+BASE_TRACK=""; BASE_REMOTE=""; BASE_RREF=""
+# Only a LOCAL BRANCH can be silently stale. A tag, a raw SHA, or a base already
+# spelled `origin/<x>` is precisely what the caller named and has no second
+# opinion to be measured against.
+if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$BASE"; then
+  BASE_TRACK="$(git -C "$ROOT" rev-parse --verify --quiet --abbrev-ref "$BASE@{upstream}" 2>/dev/null || true)"
+  if [ -n "$BASE_TRACK" ]; then
+    BASE_REMOTE="$(git -C "$ROOT" config --get "branch.$BASE.remote" 2>/dev/null || true)"
+    BASE_RREF="$(git -C "$ROOT" config --get "branch.$BASE.merge" 2>/dev/null || true)"
+  elif git -C "$ROOT" show-ref --verify --quiet "refs/remotes/origin/$BASE"; then
+    # No upstream configured, but the remote-tracking ref is right there. This is
+    # the shape a hand-made `git branch epic/x origin/epic/x` leaves behind, and
+    # refusing to look at it would exempt exactly the branches an epic uses.
+    BASE_TRACK="origin/$BASE"; BASE_REMOTE="origin"
+  fi
+  [ -n "$BASE_RREF" ] || BASE_RREF="refs/heads/$BASE"
+fi
+
+# `branch.<x>.remote = .` is a branch tracking another LOCAL branch: there is
+# nothing to fetch and `git remote get-url .` says so, so the fetch is skipped
+# and the comparison below still runs against whatever ref it named.
+if [ -n "$BASE_TRACK" ] && [ "${WT_FETCH:-1}" != 0 ] \
+   && git -C "$ROOT" remote get-url "$BASE_REMOTE" >/dev/null 2>&1; then
+  step "Refreshing $BASE_TRACK"
+  FETCH_RC=0
+  env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true \
+      GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=${WT_FETCH_TIMEOUT:-10}}" \
+      git -C "$ROOT" \
+        -c "http.lowSpeedLimit=1000" -c "http.lowSpeedTime=${WT_FETCH_TIMEOUT:-10}" \
+        fetch --quiet --no-tags "$BASE_REMOTE" \
+        "+$BASE_RREF:refs/remotes/$BASE_TRACK" || FETCH_RC=$?
+  # NOT a refusal. Offline, an expired credential and a remote that has gone away
+  # are all ordinary, and a front door that stopped working without a network
+  # would be traded for a worse failure than the one it fixes. The comparison
+  # still runs — against the ref as it already stood — and the log says which.
+  if [ "$FETCH_RC" != 0 ]; then
+    info "warning:   could not refresh $BASE_TRACK (git fetch exited $FETCH_RC);"
+    info "           comparing $BASE against the remote-tracking ref AS IT ALREADY STANDS,"
+    info "           which is only as fresh as the last successful fetch here."
+  else
+    info "refreshed: $BASE_TRACK (one ref, --no-tags)"
+  fi
+fi
+
+if [ -n "$BASE_TRACK" ] && git -C "$ROOT" show-ref --verify --quiet "refs/remotes/$BASE_TRACK"; then
+  BEHIND="$(git -C "$ROOT" rev-list --count "refs/heads/$BASE..refs/remotes/$BASE_TRACK" 2>/dev/null || printf '0')"
+  AHEAD="$(git -C "$ROOT" rev-list --count "refs/remotes/$BASE_TRACK..refs/heads/$BASE" 2>/dev/null || printf '0')"
+  info "base:      $BASE vs $BASE_TRACK — $AHEAD ahead, $BEHIND behind"
+  if [ "${BEHIND:-0}" != 0 ]; then
+    if [ "$STALE_OK" = 1 ]; then
+      # It PROCEEDS AND SAYS SO. A flag that means "yes, I meant the local ref"
+      # still has to leave a trace on the run that used it, or the deliberate
+      # case becomes indistinguishable from the accident this gate exists to
+      # catch. It becomes the STALE-BASE key, which `wt` turns into one line on
+      # STDERR — the same place and for the same reason `close --force` puts
+      # what it discarded. stdout is unchanged, so nothing parsing it is
+      # affected by a flag it never sees.
+      STALE_NOTE="$BEHIND behind $BASE_TRACK, taken anyway via --stale-base-ok"
+      info "stale:     branching from $BASE anyway (--stale-base-ok)"
+    else
+      # ONE runnable command, and it is the one that is almost always meant:
+      # branch from the published tip by naming it explicitly. Not a `git pull`
+      # in the parent checkout — that is two commands, it moves a ref the
+      # operator did not ask to move, and it fails outright on a dirty or
+      # diverged local branch. The flags this run was given are carried over so
+      # the line runs as printed rather than quietly provisioning a home the
+      # caller had declined.
+      FIX_FLAGS=""
+      if [ "$SKIP_HOME" = 1 ];        then FIX_FLAGS="$FIX_FLAGS --no-home"; fi
+      if [ "$WANT_INTEGRATION" = 1 ]; then FIX_FLAGS="$FIX_FLAGS --integration"; fi
+      REL="is $BEHIND commit(s) behind"
+      [ "${AHEAD:-0}" = 0 ] || REL="has diverged from ($AHEAD ahead, $BEHIND behind)"
+      # EXIT 7, and the number is not free. The codes a `wt` caller switches on
+      # are an interface: 3 is "the home bootstrap failed and the worktree was
+      # rolled back", 4 is close-change.sh's REFUSED_EXIT — the close-out gate —
+      # and src/git_issue_workflow/wt.py maps both onto typed exceptions
+      # (BootstrapFailed, CloseRefused). Reusing 4 here made a refused `wt new`
+      # raise CloseRefused, which names the wrong gate on the wrong verb. 5 and 6
+      # are bootstrap-home.sh's own (empty home / unprojected) and 8 is
+      # skill-manager's launch drift gate, so 7 is the first number that means
+      # only this.
+      die_fix 7 "$SCRIPT_DIR/wt new $TICKET $BASE_TRACK$FIX_FLAGS" \
+        "base $BASE $REL $BASE_TRACK — branching it would start from a superseded tree (--stale-base-ok to do it anyway)"
+    fi
+  fi
+fi
+
 step "Creating worktree for $TICKET"
 git -C "$ROOT" worktree add -q -b "$BRANCH" "$WT" "$BASE"
+# WHAT IT ACTUALLY LANDED ON, read back from the worktree rather than resolved a
+# second time from $BASE. The two agree, and the one that is evidence is the one
+# taken from the thing that was created.
+BASE_SHA="$(git -C "$WT" rev-parse --short=7 HEAD 2>/dev/null || true)"
+BASE_DESC="$BASE"
+[ -z "$BASE_SHA" ] || BASE_DESC="$BASE @ $BASE_SHA"
 info "worktree:  $WT"
-info "branch:    $BRANCH  (base: $BASE)"
+info "branch:    $BRANCH  (base: $BASE_DESC)"
 
 # Sanity: no constituent .git leaked into an integration worktree. Only an
 # integration repo has constituents, so only it can have this problem.

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from git_issue_workflow.wt import (  # noqa: E402
     BootstrapFailed,
     CloseRefused,
+    StaleBase,
     WtError,
     checkout_kind,
     parse_contract,
@@ -69,6 +70,78 @@ def test_wt_new_returns_full_contract(use_stub):
     assert contract.branch.startswith("feature/T-1")
     assert contract.if_exit_8.endswith("home drift --ack")
     assert contract.propagate.endswith("propagate.sh T-1")
+    # `wt` summarises and prints no keys, so the branch point is not reported
+    # through that path. None means "this invocation did not report one".
+    assert contract.base is None
+    assert contract.stale_base is None
+
+
+def test_wt_new_reads_the_base_key_when_the_child_emits_one(use_stub):
+    """new-change.sh called directly prints the keys; `wt` prints prose."""
+    use_stub(
+        'if [ "$1" = new ]; then printf "%-10s %s\\n" WORKTREE /tmp/repo-T-1 '
+        'BASE "main @ 9a1c4f2" STALE-BASE "3 behind origin/main, taken anyway via --stale-base-ok"; '
+        "else\n" + CONTRACT + "fi\n"
+    )
+    contract = wt_new("T-1")
+    assert contract.base == "main @ 9a1c4f2"
+    assert "--stale-base-ok" in contract.stale_base
+
+
+def test_nothing_here_parses_the_created_worktree_summary(use_stub):
+    """The rule an anchored `^created worktree (\\S+)$` elsewhere broke on.
+
+    A summary carrying an extra clause must change NOTHING about what this
+    wrapper reports, because it never reads that line.
+    """
+    use_stub(
+        'if [ "$1" = new ]; then echo "created worktree /tmp/repo-T-1 (anything at all)"; '
+        "else\n" + CONTRACT + "fi\n"
+    )
+    contract = wt_new("T-1")
+    assert contract.worktree == "/tmp/repo-T-1"  # from the WORKTREE key, not the prose
+    assert contract.base is None
+
+
+def test_wt_info_carries_no_base_it_did_not_measure(use_stub):
+    use_stub(CONTRACT)
+    assert wt_info("T-1").base is None
+
+
+def test_stale_base_refusal_maps_exit_7_not_close_refused(use_stub):
+    """Exit 4 is close-change.sh's gate. A refused `new` must not borrow it."""
+    use_stub(
+        "echo 'error creating worktree: base epic/x is 21 commit(s) behind origin/epic/x"
+        " — branching it would start from a superseded tree (--stale-base-ok to do it anyway)'\n"
+        "echo 'fix: /abs/wt new T-9 origin/epic/x'\n"
+        "echo 'log: /tmp/wt-run.log'\n"
+        "exit 7\n"
+    )
+    with pytest.raises(StaleBase) as err:
+        wt_new("T-9", "epic/x")
+    assert not isinstance(err.value, CloseRefused)
+    assert "21 commit(s) behind" in err.value.reason
+    assert "--stale-base-ok" in err.value.reason
+    assert err.value.fix.endswith("origin/epic/x")
+    assert err.value.exit_code == 7
+
+
+def test_stale_base_ok_is_forwarded_to_the_script(use_stub):
+    use_stub(
+        'if [ "$1" = new ]; then echo "args: $*" > "$GIW_ARGS_OUT"; '
+        'echo "created worktree /tmp/repo-T-1"; '
+        "else\n" + CONTRACT + "fi\n"
+    )
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("r+", suffix=".args") as fh:
+        os.environ["GIW_ARGS_OUT"] = fh.name
+        try:
+            wt_new("T-1", "epic/x", stale_base_ok=True)
+        finally:
+            os.environ.pop("GIW_ARGS_OUT", None)
+        fh.seek(0)
+        assert "--stale-base-ok" in fh.read()
 
 
 def test_wt_info_without_propagate_is_plain_repo(use_stub):
@@ -128,7 +201,7 @@ def test_unknown_failure_is_generic_wt_error(use_stub):
     use_stub("echo 'error: unknown verb: frobnicate'\nexit 1\n")
     with pytest.raises(WtError) as err:
         wt_info("T-7")
-    assert not isinstance(err.value, (BootstrapFailed, CloseRefused))
+    assert not isinstance(err.value, (BootstrapFailed, CloseRefused, StaleBase))
     assert "unknown verb" in err.value.reason
 
 

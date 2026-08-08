@@ -69,6 +69,10 @@ created worktree /path/to/<repo>-<ticket>
 closed worktree /path/to/<repo>-<ticket> (branch feature/<ticket> kept; home work went no further than /path/to/repo/.skill-manager — push skill edits from there)
 ```
 
+**Nothing else is ever on that line.** Anything a caller acts on is a keyed
+contract line, not prose — `"$WT" info <ticket>`, or `--verbose` on the run that
+creates it. The commit a worktree was branched from is the `BASE` key there.
+
 **`cd` to the path `new` printed.** It is `<parent>/<repo>-<ticket>`, not
 `../wt-<ticket>`, so do not guess it. `wt` is **not on `PATH`** — the spelling
 above is a path that resolves, which is why it is written out; an installed
@@ -99,9 +103,19 @@ Exit **3** with "no project home yet" is the common one, on the first ticket in
 a repository that has never been given a home. Run the `fix:` line verbatim —
 once per repository, not per worktree — and re-run `wt new`.
 
+Exit **7** is the branch point: a bare base name resolves to the **local** ref,
+and a local `epic/*` branch does not advance when its ticket PRs are merged
+server-side. `new` refreshes the base's own remote ref first and refuses if the
+local one is behind it; the `fix:` line branches from the published tip.
+`--stale-base-ok` takes the local ref deliberately and says so on **stderr**,
+leaving stdout unchanged. `WT_FETCH=0` skips the refresh when offline. See
+`references/worktrees.md` § *The branch point*.
+
 Everything else is on demand and costs nothing until asked:
 `"$WT" info <ticket>` prints WORKTREE / BRANCH / LAUNCH / IF-EXIT-8 / CLOSE (and
-PROPAGATE, only in an integration repo). `references/worktrees.md` explains why
+PROPAGATE, only in an integration repo). `BASE` — the commit branched from — is
+on the run that CREATES the worktree, since that is the only run that measured
+it: `new-change.sh` stdout, or `"$WT" new <ticket> --verbose`. `references/worktrees.md` explains why
 each line is what it is; the happy path does not need it.
 
 **This is the same command in a plain repo and an integration repo**, and in a

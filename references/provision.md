@@ -99,6 +99,13 @@ git update-ref "refs/index-bases/$(basename "$(git rev-parse --show-toplevel)")/
 cd /path/to/<repo>-<ticket>                          # the path it just printed
 ```
 
+Passing a resolved `$commit_oid` rather than a bare branch name is the point of
+the three lines above it, and it is why this recipe is not subject to the stale-
+base refusal in `references/worktrees.md`: a SHA has no remote counterpart to
+trail, because the fetch that made it current already happened here. A bare base
+name would resolve to the **local** ref, and `new` refuses that one when it is
+behind its remote.
+
 **Read the worktree path off the output.** It is
 `<parent>/<repo-name>-<ticket>`, placed beside the *outermost* enclosing
 integration repo so a nested repo's worktree never lands in a parent's

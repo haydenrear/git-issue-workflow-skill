@@ -80,6 +80,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; . "$SCRIPT_DIR/lib.s
 usage() {
   cat >&2 <<'EOF'
 usage: wt new   <TICKET> [base-branch] [--integration] [--no-home] [--verbose]
+                [--stale-base-ok]
        wt close <TICKET|PATH> [--force] [--dry-run] [--verbose]
        wt info  <TICKET>
 
@@ -95,6 +96,12 @@ that does not follow from convention:
 
   created worktree <path>
   closed worktree <path> (branch <branch> kept)
+
+`new` REFUSES (exit 7) a base that is behind its remote counterpart, because a
+bare base name resolves to the LOCAL ref and a local epic branch does not advance
+when its PRs are merged server-side. It refreshes that one ref first (WT_FETCH=0
+skips it). --stale-base-ok branches from the local ref anyway and says so on
+STDERR; the commit it resolved to is the BASE key, on demand like every other.
 
 A refusal prints what went wrong, one command to run, and a log:
 
@@ -372,8 +379,31 @@ if [ "$RC" = 0 ]; then
   case "$VERB" in
     new)
       WT_PATH="$(key WORKTREE)"
+      # NOTHING IS ADDED TO THIS LINE, and that is a rule rather than a
+      # preference. The base SHA was on it for one release and taken back off:
+      # it is a MEASUREMENT, so it belongs in the keyed contract (the `BASE`
+      # key, emitted by new-change.sh) where every consumer already reads
+      # `^KEY<space>` generically. Put on this line instead it broke three
+      # anchored regexes in two other repositories — `^created worktree
+      # (\S+)$` in skill-manager's onboarding graph, and two `line[len("created
+      # worktree "):]` slices in the skt evals, the second of which then
+      # reported PASS on a path that could not exist.
+      #
+      # Which is the point this file already makes further up: a caller that
+      # parses this line is parsing PROSE and never could be relied on. Adding
+      # load-bearing data to it does not just risk those parsers, it REWARDS
+      # them. So the summary stays exactly what it was — the path — and
+      # anything a caller must act on goes in a key.
       if [ -n "$WT_PATH" ]; then printf 'created worktree %s\n' "$WT_PATH"
       else [ -z "$OUT" ] || printf '%s\n' "$OUT"; fi
+      # ...with ONE exception, on stderr, and it is the same exception
+      # `close --force` already makes: a run that deliberately overrode a gate
+      # says what it overrode. stdout is unchanged, so nothing parses it; the
+      # operator who typed the flag still gets the acknowledgement. A silent
+      # override would make the deliberate case indistinguishable from the
+      # accident the gate exists to catch.
+      WT_STALE="$(key STALE-BASE)"
+      [ -z "$WT_STALE" ] || printf 'note: branched from a stale base — %s\n' "$WT_STALE" >&2
       ;;
     close)
       WT_PATH="$(key CLOSED)"

@@ -125,6 +125,19 @@ yesno()     { if "$@"; then printf 1; else printf 0; fi; }
 # onto the console fails a budget check, and a log that was named but never
 # written fails every check that reads it.
 run_log() { command sed -n 's/^log:  *//p' "$1" 2>/dev/null | command sed -n 1p; }
+# The worktree path off `wt new`'s one line. ONE definition, because several
+# checks below read it and a summary whose path could be extracted two ways is a
+# summary two checks can disagree about.
+#
+# THIS IS THE ONLY PLACE THAT PARSES THAT LINE, and it is a test rather than a
+# consumer. The line is PROSE: `wt` says so, and it was proved when a `(base …)`
+# clause was briefly added to it and broke an anchored `^created worktree
+# (\S+)$` in skill-manager's onboarding graph plus two slices in the skt evals —
+# one of which then scored a path that could not exist as a PASS. Anything a
+# caller must act on is a KEY. See `no_fact_a_caller_needs_was_added_to_the_new_summary`.
+created_path() {
+  command sed -n 's/^created worktree //p' "$1" 2>/dev/null | command sed -n 1p
+}
 # Lines of console output, blank lines included — the thing an agent pays for.
 lines_of() { command wc -l < "$1" | command tr -d ' '; }
 ok()   { PASSED=$((PASSED + 1)); printf '  PASS  %s\n' "$1" >&2; }
@@ -1095,7 +1108,7 @@ check "$(yesno test "$NEW_RC" = 0)" \
 # typed the other half of, BRANCH is feature/<TICKET>. IF-EXIT-8 was the most
 # expensive of them and the least often useful: a remedy for a gate that had not
 # fired, paid for on every run in which it never fires.
-WT_LINE_V="$(command sed -n 's/^created worktree //p' "$SCRATCH/wt-new.out" | command sed -n 1p)"
+WT_LINE_V="$(created_path "$SCRATCH/wt-new.out")"
 new_is_one_line_naming_a_real_worktree() {
   [ "$(lines_of "$SCRATCH/wt-new.out")" = 1 ] || return 1
   [ "$(lines_of "$SCRATCH/wt-new.err")" = 0 ] || return 1
@@ -1243,7 +1256,7 @@ step "wt close --force reports one outcome, not both"
 FORCED_WT=""
 ( cd "$CHEAP" && bare bash "$SCRIPT_DIR/wt" new W2 ) \
   > "$SCRATCH/wt-new2.out" 2> "$SCRATCH/wt-new2.err" || true
-FORCED_WT="$(command sed -n 's/^created worktree //p' "$SCRATCH/wt-new2.out" | command sed -n 1p)"
+FORCED_WT="$(created_path "$SCRATCH/wt-new2.out")"
 
 # Work the gate must block on: a unit the PROJECT home has never seen. Without
 # it the forced path is never reached and the check below measures the clean
@@ -2443,7 +2456,7 @@ PROG_RC=0
 ( cd "$CHEAP" && bare env WT_PROGRESS_AFTER=1 bash "$SCRIPT_DIR/wt" new WL2 ) \
   > "$SCRATCH/wt-prog.out" 2> "$SCRATCH/wt-prog.err" || PROG_RC=$?
 PROG_LOG="$(command sed -n 's/.*watch: tail -f //p' "$SCRATCH/wt-prog.err" | command sed -n 1p)"
-PROG_WT="$(command sed -n 's/^created worktree //p' "$SCRATCH/wt-prog.out" | command sed -n 1p)"
+PROG_WT="$(created_path "$SCRATCH/wt-prog.out")"
 progress_line_names_a_log_that_holds_the_run() {
   [ "$PROG_RC" = 0 ] || return 1
   # The stdout contract is UNTOUCHED by any of this: still one line, still the
@@ -2617,6 +2630,385 @@ AS_PRINTED_RC=0
 check "$(yesno test "$AS_PRINTED_RC" = 0)" \
   "the_CLOSE_line_runs_verbatim_from_an_unrelated_directory" \
   "running '$CLOSE2_V' from $PROJ exited $AS_PRINTED_RC"
+
+# ----------------------------------------- the BRANCH POINT, which was never checked
+#
+# `git worktree add -q -b F <path> <BASE>` resolves a bare BASE to the LOCAL ref,
+# and there was no `git fetch` anywhere in wt, new-change.sh, close-change.sh,
+# lib.sh or bootstrap-home.sh — so a worktree started wherever the local ref
+# happened to be and nothing said so. The case that costs: an epic whose ticket
+# PRs are merged SERVER-SIDE. `gh pr merge` advances `origin/epic/<slug>` on the
+# server; the local `epic/<slug>` never moves, and neither does the local COPY of
+# the remote ref, because only a fetch moves that. Measured: a ticket branched 21
+# commits behind origin and caught it only because its work order carried a SHA
+# it thought to compare HEAD against. Without that it would have edited a
+# superseded file and reported a true sentence about the wrong tree.
+#
+# The fixture reproduces exactly that shape, and it is the shape rather than the
+# symptom that matters: origin is advanced from a DIFFERENT CLONE, so $STALE's
+# `refs/remotes/origin/epic/demo` is stale too. A gate that compared the local
+# branch against the local copy of the remote would find them identical and pass.
+# That is why the first check below is the WT_FETCH=0 one: it is the measurement
+# of what the gate cannot see without a fetch, run before any fetch has happened.
+
+step "wt new refuses a base that is behind its remote"
+
+UPSTREAM="$SCRATCH/upstream.git"
+PUSHER="$SCRATCH/pusher"
+STALE="$SCRATCH/stale"
+
+git init -q --bare -b main "$UPSTREAM"
+mkdir -p "$PUSHER"
+git -C "$PUSHER" init -q -b main
+git -C "$PUSHER" config user.email selftest@example.invalid
+git -C "$PUSHER" config user.name "selftest"
+commit_in_pusher() { # $1 = marker line, which is also the commit message
+  printf '%s\n' "$1" >> "$PUSHER/log.txt"
+  git -C "$PUSHER" add -A
+  git -C "$PUSHER" -c commit.gpgsign=false commit -qm "$1"
+}
+commit_in_pusher "v1"
+git -C "$PUSHER" remote add origin "$UPSTREAM"
+git -C "$PUSHER" push -q -u origin main
+for b in epic/demo other steady; do
+  git -C "$PUSHER" checkout -q -b "$b" main
+  commit_in_pusher "$b v1"
+  git -C "$PUSHER" push -q -u origin "$b"
+done
+git -C "$PUSHER" checkout -q main
+
+git clone -q "$UPSTREAM" "$STALE"
+git -C "$STALE" config user.email selftest@example.invalid
+git -C "$STALE" config user.name "selftest"
+# The local branches, tracking their published counterparts, as an epic ticket
+# repo has them.
+git -C "$STALE" branch -q --track epic/demo origin/epic/demo
+git -C "$STALE" branch -q --track steady    origin/steady
+# A branch with NO remote counterpart at all: no upstream, no origin/local-only.
+git -C "$STALE" branch -q local-only main
+# ...and one that is AHEAD of its counterpart rather than behind.
+git -C "$STALE" checkout -q steady
+printf 'local only\n' >> "$STALE/log.txt"
+git -C "$STALE" add -A
+git -C "$STALE" -c commit.gpgsign=false commit -qm "steady, ahead of origin"
+git -C "$STALE" checkout -q main
+
+# NOW the server moves, from the other clone. $STALE learns nothing about it.
+git -C "$PUSHER" checkout -q epic/demo
+commit_in_pusher "epic v2"; commit_in_pusher "epic v3"; commit_in_pusher "epic v4"
+git -C "$PUSHER" push -q
+git -C "$PUSHER" checkout -q other
+commit_in_pusher "other v2"
+git -C "$PUSHER" push -q
+git -C "$PUSHER" checkout -q main
+
+STALE_LOCAL_EPIC="$(git -C "$STALE" rev-parse epic/demo)"
+STALE_CACHED_EPIC="$(git -C "$STALE" rev-parse refs/remotes/origin/epic/demo)"
+STALE_CACHED_OTHER="$(git -C "$STALE" rev-parse refs/remotes/origin/other)"
+REAL_EPIC="$(git -C "$PUSHER" rev-parse epic/demo)"
+
+# The fixture's own non-vacuity, and it is the whole premise: the local branch,
+# the local COPY of the remote branch, and the actual remote branch must be three
+# facts of which the first two agree and the third does not. If the clone came
+# down already fresh, every check below would be asserting against nothing.
+# Counted in $PUSHER, not in $STALE: the whole premise is that $STALE has never
+# fetched, so it does not HAVE the objects the remote moved on to and cannot
+# count a range that ends in one. Asking the clone that pushed them is the only
+# place the distance is answerable before the gate's own fetch runs.
+fixture_is_stale_the_way_the_real_one_was() {
+  [ "$STALE_LOCAL_EPIC" = "$STALE_CACHED_EPIC" ] || return 1
+  [ "$STALE_LOCAL_EPIC" != "$REAL_EPIC" ] || return 1
+  [ "$(git -C "$PUSHER" rev-list --count "$STALE_LOCAL_EPIC..$REAL_EPIC")" = 3 ]
+}
+check "$(yesno fixture_is_stale_the_way_the_real_one_was)" \
+  "the_fixture_reproduces_a_local_base_behind_origin_with_a_stale_local_copy_of_origin" \
+  "local epic/demo $STALE_LOCAL_EPIC, cached origin/epic/demo $STALE_CACHED_EPIC, real $REAL_EPIC —
+      the two local facts must agree and the remote must have moved past them"
+
+# ---- WHAT THE CHECK CANNOT SEE WITHOUT A FETCH, measured rather than asserted
+# in prose. This runs FIRST, while the remote-tracking ref is still stale, and it
+# is expected to SUCCEED: with WT_FETCH=0 there is nothing that says the base has
+# been superseded, so the run proceeds and branches 3 commits behind. This is the
+# honest statement of the gate's limit, and it is also the offline escape.
+SB0_RC=0
+( cd "$STALE" && bare env WT_FETCH=0 bash "$SCRIPT_DIR/wt" new SB0 epic/demo --no-home ) \
+  > "$SCRATCH/sb-nofetch.out" 2> "$SCRATCH/sb-nofetch.err" || SB0_RC=$?
+SB0_WT="$(created_path "$SCRATCH/sb-nofetch.out")"
+nofetch_cannot_see_a_staleness_no_local_ref_records() {
+  [ "$SB0_RC" = 0 ] || return 1
+  [ -n "$SB0_WT" ] && [ -d "$SB0_WT" ] || return 1
+  # and it really did land on the superseded commit
+  [ "$(git -C "$SB0_WT" rev-parse HEAD)" = "$STALE_LOCAL_EPIC" ]
+}
+check "$(yesno nofetch_cannot_see_a_staleness_no_local_ref_records)" \
+  "WT_FETCH_0_branches_from_the_stale_base_because_no_local_ref_records_the_staleness" \
+  "rc=$SB0_RC, worktree '${SB0_WT:-<none>}'. This check asserts the LIMIT: without the
+      fetch, origin/epic/demo is only as fresh as the last one, so the comparison
+      is between two equally stale local refs and finds nothing."
+
+# ---- and the refusal, with the fetch that makes it possible.
+SB1_RC=0
+( cd "$STALE" && bare bash "$SCRIPT_DIR/wt" new SB1 epic/demo --no-home ) \
+  > "$SCRATCH/sb-stale.out" 2> "$SCRATCH/sb-stale.err" || SB1_RC=$?
+SB1_REASON="$(command sed -n 's/^error creating worktree: //p' "$SCRATCH/sb-stale.out" | command sed -n 1p)"
+SB1_FIX="$(command sed -n 's/^fix: //p' "$SCRATCH/sb-stale.out" | command sed -n 1p)"
+SB1_LOG="$(command sed -n 's/^log: //p' "$SCRATCH/sb-stale.out" | command sed -n 1p)"
+
+check "$(yesno test "$SB1_RC" != 0)" \
+  "a_base_behind_its_remote_is_refused_rather_than_branched" \
+  "wt new exited $SB1_RC against a base 3 commits behind origin/epic/demo — before this
+      gate it exited 0 and the ticket worked on a superseded tree"
+
+# THE NUMBER, not just "nonzero". The exit codes are an interface:
+# src/git_issue_workflow/wt.py maps 3 -> BootstrapFailed and 4 ->
+# close-change.sh's REFUSED_EXIT -> CloseRefused, and this gate first shipped
+# reusing 4 — so a refused `wt new` raised "the close-out gate refused", naming
+# the wrong gate on the wrong verb. Asserted here as well as in the Python
+# tests, because the collision is between two SHELL scripts and the Python is
+# only where it surfaces.
+check "$(yesno test "$SB1_RC" = 7)" \
+  "the_stale_base_refusal_has_its_own_exit_code_and_does_not_borrow_the_close_gates" \
+  "wt new exited $SB1_RC; 7 is this gate's, 4 belongs to close-change.sh's REFUSED_EXIT
+      and is mapped to CloseRefused by the Python surface"
+check "$(yesno test "$(command grep -c 'REFUSED_EXIT=4' "$SCRIPT_DIR/close-change.sh")" = 1)" \
+  "close_change_still_owns_exit_4_so_the_number_above_is_really_taken" \
+  "close-change.sh no longer sets REFUSED_EXIT=4, so the check above is asserting
+      against a collision that may no longer exist — re-derive the code map"
+check "$(yesno absent "$SCRATCH/stale-SB1")" \
+  "the_refused_run_created_no_worktree_and_no_branch" \
+  "$SCRATCH/stale-SB1 exists after a run that refused"
+
+# The failure contract, whole, because `wt`'s three-line budget is load-bearing
+# and a new refusal is exactly where it gets broken. Budget AND evidence in one
+# check, as everywhere else here.
+stale_refusal_is_three_lines_that_say_what_happened() {
+  [ "$(lines_of "$SCRATCH/sb-stale.out")" -le 3 ] || return 1
+  [ "$(lines_of "$SCRATCH/sb-stale.err")" = 0 ] || return 1
+  contains "behind" "$SB1_REASON" || return 1
+  contains "origin/epic/demo" "$SB1_REASON"
+}
+check "$(yesno stale_refusal_is_three_lines_that_say_what_happened)" \
+  "a_stale_base_refusal_costs_three_lines_AND_names_the_ref_it_is_behind" \
+  "stdout $(lines_of "$SCRATCH/sb-stale.out") line(s), stderr $(lines_of "$SCRATCH/sb-stale.err") line(s), reason '${SB1_REASON:-<none>}':
+$(command sed 's/^/        /' "$SCRATCH/sb-stale.out")
+      stderr:
+$(command sed 's/^/        /' "$SCRATCH/sb-stale.err")"
+
+# The override has to be NAMED on the refusal, or the deliberate case has no way
+# out that does not involve reading a script.
+check "$(yesno contains "--stale-base-ok" "$SB1_REASON")" \
+  "the_refusal_names_the_one_flag_that_makes_the_deliberate_case_work" \
+  "reason is '${SB1_REASON:-<none>}' — a gate whose override is documented only in the
+      source is a gate an agent works around by hand-rolling git worktree add"
+
+# ONE command, and it runs as printed — including the flags this run was given,
+# since a fix that silently drops --no-home provisions a home the caller declined.
+stale_fix_is_one_runnable_command_that_branches_from_the_remote() {
+  [ -n "$SB1_FIX" ] || return 1
+  executable "${SB1_FIX%% *}" || return 1
+  contains "origin/epic/demo" "$SB1_FIX" || return 1
+  contains "--no-home" "$SB1_FIX"
+}
+check "$(yesno stale_fix_is_one_runnable_command_that_branches_from_the_remote)" \
+  "the_remedy_is_a_runnable_command_that_branches_from_the_published_tip" \
+  "fix is '${SB1_FIX:-<none>}'"
+SB1_FIX_RC=0
+( cd "$STALE" && bare bash -c "$SB1_FIX" ) > "$SCRATCH/sb-fix.out" 2>"$SCRATCH/sb-fix.err" || SB1_FIX_RC=$?
+SB1_FIX_WT="$(created_path "$SCRATCH/sb-fix.out")"
+the_printed_fix_actually_fixes_it() {
+  [ "$SB1_FIX_RC" = 0 ] || return 1
+  [ -n "$SB1_FIX_WT" ] && [ -d "$SB1_FIX_WT" ] || return 1
+  [ "$(git -C "$SB1_FIX_WT" rev-parse HEAD)" = "$REAL_EPIC" ]
+}
+check "$(yesno the_printed_fix_actually_fixes_it)" \
+  "the_fix_line_runs_verbatim_and_lands_on_the_published_tip" \
+  "rc=$SB1_FIX_RC running '$SB1_FIX'; worktree '${SB1_FIX_WT:-<none>}' is at
+      $(git -C "${SB1_FIX_WT:-$STALE}" rev-parse HEAD 2>/dev/null), expected $REAL_EPIC"
+
+# The reasoning is in the log, not on the console — same rule as every other
+# refusal here.
+stale_refusal_named_a_log_holding_the_measurement() {
+  [ -n "$SB1_LOG" ] || return 1
+  [ -s "$SB1_LOG" ] || return 1
+  command grep -q 'ahead, 3 behind' "$SB1_LOG"
+}
+check "$(yesno stale_refusal_named_a_log_holding_the_measurement)" \
+  "the_stale_base_refusal_names_a_log_holding_the_ahead_behind_measurement" \
+  "log is '${SB1_LOG:-<none>}' and does not carry the counted comparison"
+
+# ---- THE FETCH IS SCOPED. One ref from one remote. A `git fetch` with no
+# refspec would have refreshed origin/other as well, and on a real repo that is
+# every branch and every tag on the remote — paid on a command that runs
+# constantly. Both halves in one place: the ref it was asked for MOVED, and the
+# one it was not did NOT.
+fetch_moved_only_the_ref_it_was_asked_for() {
+  [ "$(git -C "$STALE" rev-parse refs/remotes/origin/epic/demo)" = "$REAL_EPIC" ] || return 1
+  [ "$(git -C "$STALE" rev-parse refs/remotes/origin/other)" = "$STALE_CACHED_OTHER" ]
+}
+check "$(yesno fetch_moved_only_the_ref_it_was_asked_for)" \
+  "the_refresh_updated_the_base_ref_and_left_every_other_remote_ref_alone" \
+  "origin/epic/demo is $(git -C "$STALE" rev-parse refs/remotes/origin/epic/demo) (expected $REAL_EPIC);
+      origin/other is $(git -C "$STALE" rev-parse refs/remotes/origin/other) (expected it UNCHANGED at $STALE_CACHED_OTHER)"
+
+# ---- THE OVERRIDE PROCEEDS, AND SAYS SO.
+#
+# Both halves, because either alone is a defect: a flag that refuses anyway is
+# useless, and a flag that silently proceeds makes the deliberate case
+# indistinguishable from the accident the gate exists to catch.
+SB2_RC=0
+( cd "$STALE" && bare bash "$SCRIPT_DIR/wt" new SB2 epic/demo --stale-base-ok --no-home ) \
+  > "$SCRATCH/sb-ok.out" 2> "$SCRATCH/sb-ok.err" || SB2_RC=$?
+SB2_WT="$(created_path "$SCRATCH/sb-ok.out")"
+SB2_LINE="$(command sed -n 1p "$SCRATCH/sb-ok.out")"
+SB2_NOTE="$(command sed -n 1p "$SCRATCH/sb-ok.err")"
+override_proceeds_from_the_local_ref_and_says_it_did() {
+  [ "$SB2_RC" = 0 ] || return 1
+  # STDOUT IS UNTOUCHED BY THE OVERRIDE, byte for byte the ordinary summary. A
+  # caller reading that line cannot tell this run from any other and cannot be
+  # broken by a flag it never sees.
+  [ "$(lines_of "$SCRATCH/sb-ok.out")" = 1 ] || return 1
+  [ -n "$SB2_WT" ] && [ -d "$SB2_WT" ] || return 1
+  [ "$SB2_LINE" = "created worktree $SB2_WT" ] || return 1
+  # It really took the LOCAL ref — not a silent redirect to origin, which is the
+  # other way this gate could have been built and the one that breaks the
+  # legitimate case.
+  [ "$(git -C "$SB2_WT" rev-parse HEAD)" = "$STALE_LOCAL_EPIC" ] || return 1
+  # ...and it SAYS SO, in one line, on STDERR. Same place and same reason as
+  # `close --force`: the run that deliberately overrode a gate is the one that
+  # owes an acknowledgement, and stderr is where every other explanation in
+  # these scripts already lives.
+  [ "$(lines_of "$SCRATCH/sb-ok.err")" = 1 ] || return 1
+  contains "--stale-base-ok" "$SB2_NOTE" || return 1
+  contains "behind" "$SB2_NOTE"
+}
+check "$(yesno override_proceeds_from_the_local_ref_and_says_it_did)" \
+  "--stale-base-ok_says_so_on_stderr_and_leaves_the_stdout_summary_byte_identical" \
+  "rc=$SB2_RC, stdout $(lines_of "$SCRATCH/sb-ok.out") line(s), stderr $(lines_of "$SCRATCH/sb-ok.err") line(s);
+      worktree '${SB2_WT:-<none>}' at $(git -C "${SB2_WT:-$STALE}" rev-parse HEAD 2>/dev/null) (expected the LOCAL $STALE_LOCAL_EPIC).
+      stdout: $SB2_LINE
+      stderr: ${SB2_NOTE:-<none>}"
+
+# ---- AHEAD, EQUAL, and NO COUNTERPART all proceed untouched.
+#
+# The gate is narrow on purpose. Refusing anything but "behind" would make `wt
+# new` refuse most of the runs it is asked to do, and an operator who meets that
+# stops using the front door — which is the failure the front door exists to
+# prevent, arrived at from the other side.
+
+# Non-vacuity for the AHEAD case: `steady` must really have a counterpart it is
+# ahead of, or "it proceeded" is true of a branch the gate never looked at.
+STEADY_AHEAD="$(git -C "$STALE" rev-list --count origin/steady..steady)"
+STEADY_BEHIND="$(git -C "$STALE" rev-list --count steady..origin/steady)"
+check "$(yesno test "$STEADY_AHEAD" = 1 -a "$STEADY_BEHIND" = 0)" \
+  "the_ahead_fixture_really_is_ahead_of_a_counterpart_that_exists" \
+  "steady is $STEADY_AHEAD ahead / $STEADY_BEHIND behind origin/steady; the next check needs 1 / 0"
+
+SB_OK=""
+sb_proceeds() { # $1 = ticket, $2 = base, $3 = why
+  local rc=0
+  ( cd "$STALE" && bare bash "$SCRIPT_DIR/wt" new "$1" "$2" --no-home ) \
+    > "$SCRATCH/sb-$1.out" 2> "$SCRATCH/sb-$1.err" || rc=$?
+  local p; p="$(created_path "$SCRATCH/sb-$1.out")"
+  if [ "$rc" != 0 ] || [ "$(lines_of "$SCRATCH/sb-$1.out")" != 1 ] \
+     || [ "$(lines_of "$SCRATCH/sb-$1.err")" != 0 ] || [ -z "$p" ] || [ ! -d "$p" ]; then
+    SB_OK="$SB_OK
+      $3 ($2): rc=$rc, stdout $(lines_of "$SCRATCH/sb-$1.out") line(s), stderr $(lines_of "$SCRATCH/sb-$1.err") line(s), worktree '${p:-<none>}'"
+  fi
+}
+sb_proceeds SB3 steady     "a base AHEAD of its counterpart"
+sb_proceeds SB4 main       "a base EQUAL to its counterpart"
+sb_proceeds SB5 local-only "a base with NO counterpart"
+check "$(yesno test -z "$SB_OK")" \
+  "ahead_equal_and_no_counterpart_all_still_create_a_worktree_in_one_line" \
+  "these should not have been gated:$SB_OK"
+
+# And the no-counterpart case is non-vacuous the same way: the gate has to have
+# had nothing to look at, rather than having looked and been wrong.
+no_counterpart_really_has_none() {
+  ! git -C "$STALE" show-ref --verify --quiet refs/remotes/origin/local-only || return 1
+  ! git -C "$STALE" rev-parse --verify --quiet 'local-only@{upstream}' >/dev/null 2>&1
+}
+check "$(yesno no_counterpart_really_has_none)" \
+  "the_no_counterpart_fixture_really_has_no_upstream_and_no_origin_ref" \
+  "local-only has a counterpart after all, so 'it proceeded' proves nothing"
+
+# ---- THE RESOLVED BASE IS A KEY, AND THE SUMMARY LINE IS UNCHANGED.
+#
+# The branch point is a MEASUREMENT of this run — not reconstructible from the
+# worktree path the way LAUNCH and IF-EXIT-8 are — so it has to be reported
+# somewhere. It was briefly reported as a `(base …)` clause on `wt new`'s one
+# line, and that is the thing this pair of checks exists to keep from coming
+# back: three parsers in two other repositories read that line with anchored
+# regexes and slices, and one of them then scored a path that could not exist
+# as a PASS. Keys cost nothing to add — every consumer matches `^KEY<space>`
+# generically — and the summary is prose that nothing should be reading.
+SB5_WT="$(created_path "$SCRATCH/sb-SB5.out")"
+SB5_LINE="$(command sed -n 1p "$SCRATCH/sb-SB5.out")"
+no_fact_a_caller_needs_was_added_to_the_new_summary() {
+  [ -n "$SB5_WT" ] && [ -d "$SB5_WT" ] || return 1
+  # EXACTLY this, with nothing appended. `=` and not a substring match, because
+  # "the path is on the line" is satisfied by every clause that ever broke a
+  # downstream parser.
+  [ "$SB5_LINE" = "created worktree $SB5_WT" ]
+}
+check "$(yesno no_fact_a_caller_needs_was_added_to_the_new_summary)" \
+  "wt_news_one_line_is_the_path_and_nothing_else_so_a_downstream_parser_cannot_break" \
+  "the line was '$SB5_LINE'; it must be exactly 'created worktree <path>'.
+      skill-manager's onboarding graph matches it with ^created worktree (\\S+)\$ and the
+      skt evals slice it with line[len('created worktree '):] — anything appended
+      here breaks both, and one of them fails OPEN."
+
+# The measurement itself, as a CONTRACT KEY, taken from a direct new-change.sh
+# run because that is the thing that emits keys. Both halves: the branch it was
+# told to use, and the commit that resolved to.
+( cd "$STALE" && bare bash "$SCRIPT_DIR/new-change.sh" SB6 main --no-home ) \
+  > "$SCRATCH/sb-key.out" 2> "$SCRATCH/sb-key.err" || true
+SB6_BASE_KEY="$(command sed -n 's/^BASE  *//p' "$SCRATCH/sb-key.out" | command sed -n 1p)"
+SB6_SHA="$(git -C "$STALE" rev-parse --short=7 main)"
+base_key_names_the_branch_and_the_commit_it_resolved_to() {
+  [ -n "$SB6_BASE_KEY" ] || return 1
+  contains "main" "$SB6_BASE_KEY" || return 1
+  contains "$SB6_SHA" "$SB6_BASE_KEY" || return 1
+  # and the SHA is the one the worktree is actually ON, not a second resolution
+  # of the base name that could disagree with it
+  [ "$(git -C "$SCRATCH/stale-SB6" rev-parse --short=7 HEAD)" = "$SB6_SHA" ]
+}
+check "$(yesno base_key_names_the_branch_and_the_commit_it_resolved_to)" \
+  "new_change_emits_a_BASE_key_naming_the_branch_and_the_commit_it_resolved_to" \
+  "BASE is '${SB6_BASE_KEY:-<none>}', expected it to name main and $SB6_SHA, and for
+      $SCRATCH/stale-SB6 to be checked out at $SB6_SHA"
+
+# The override's acknowledgement is a key too, present ONLY when it fired —
+# answerable by presence rather than by sniffing a substring out of BASE.
+SB2_KEY_RC=0
+( cd "$STALE" && bare bash "$SCRIPT_DIR/new-change.sh" SB8 epic/demo --stale-base-ok --no-home ) \
+  > "$SCRATCH/sb-key2.out" 2> "$SCRATCH/sb-key2.err" || SB2_KEY_RC=$?
+stale_base_is_its_own_key_present_only_when_the_override_fired() {
+  [ "$SB2_KEY_RC" = 0 ] || return 1
+  command grep -q '^STALE-BASE ' "$SCRATCH/sb-key2.out" || return 1
+  # ...and absent from the run that needed no override at all.
+  ! command grep -q '^STALE-BASE ' "$SCRATCH/sb-key.out"
+}
+check "$(yesno stale_base_is_its_own_key_present_only_when_the_override_fired)" \
+  "a_STALE_BASE_key_marks_the_overridden_run_and_only_the_overridden_run" \
+  "rc=$SB2_KEY_RC; overridden run's stdout:
+$(command sed 's/^/        /' "$SCRATCH/sb-key2.out")
+      ordinary run's stdout:
+$(command sed 's/^/        /' "$SCRATCH/sb-key.out")"
+
+# ...and NOT on --info, which is answering about a worktree some other run
+# created and knows nothing about what that run branched from. A BASE key there
+# would be the `verified`-over-an-empty-home defect in another costume.
+( cd "$STALE" && bare bash "$SCRIPT_DIR/wt" info SB6 ) \
+  > "$SCRATCH/sb-info.out" 2> "$SCRATCH/sb-info.err" || true
+info_claims_no_base_it_did_not_measure() {
+  command grep -q '^WORKTREE ' "$SCRATCH/sb-info.out" || return 1
+  ! command grep -q '^BASE ' "$SCRATCH/sb-info.out"
+}
+check "$(yesno info_claims_no_base_it_did_not_measure)" \
+  "wt_info_reports_no_BASE_for_a_worktree_whose_branch_point_it_never_measured" \
+  "stdout was:
+$(command sed 's/^/        /' "$SCRATCH/sb-info.out")"
 
 # ------------------------------------------------------------------- verdict
 
