@@ -17,7 +17,7 @@ S="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts
 "$S/wt" close TICKET-123
 ```
 
-`wt` **is not on `PATH`** — invoke it by a path that resolves, which is how every
+`wt` **is not on `PATH`** — but `skt ticket new|close` is, in any home carrying the skt plugin, and it drives this same script underneath. Where skt is absent, invoke `wt` by a path that resolves, which is how every
 command in this repo prints itself, including the `CLOSE` key. An installed
 unit's files live at `$SKILL_MANAGER_HOME/skills/<unit>/`; the `:-` fallback
 makes the same line work from a bare shell. Run `new` from anywhere inside the

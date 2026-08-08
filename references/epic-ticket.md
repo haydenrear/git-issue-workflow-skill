@@ -100,6 +100,19 @@ epic branch to `commit_oid`/`tree_oid` once, create-only
 `refs/index-bases/<repo-id>/<tree_oid>` retention ref, branch from the pinned
 commit — never re-resolve `origin/epic/<slug>` afterwards):
 
+In a home carrying the `skt` plugin, the whole block below is one command —
+declared path, pinned base, retention ref, and the worktree's own home, rolled
+back together on bootstrap failure:
+
+```bash
+git fetch origin
+commit_oid=$(git rev-parse origin/epic/<slug>)
+skt ticket new <issue-number>-<slug> --base "$commit_oid" --path ../wt-<issue-number>-<slug>
+cd ../wt-<issue-number>-<slug>
+```
+
+Without skt, the same conventions by hand:
+
 ```bash
 git fetch origin
 test -z "$(git status --porcelain)" || { echo "dirty tree — reconcile first"; exit 1; }

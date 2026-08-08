@@ -212,12 +212,14 @@ which skips this check and every other one. `--force` is not on
 job is whether to obey it. Never reach for it to get past a blocker you have not
 read.
 
-### 6b. Remove the worktree
+### 6b. After the removal
 
-```bash
-git worktree remove ../wt-<ticket>          # PLAIN
-git worktree remove ../<repo>-<ticket>      # INTEGRATION parent worktree
-```
+The removal itself already happened in 6a — `skt ticket close <ticket>` (or
+`"$WT" close <ticket>`, or the `close-out && git worktree remove` pair with
+its `&&` intact). There is deliberately no bare `git worktree remove` step
+here: run bare, it deletes the worktree's home — and every unpublished skill
+edit in it — without a word, which is the exact loss the gate in 6a exists to
+prevent. What remains is syncing the primary checkout:
 
 **PLAIN:** the primary checkout never touched this ticket's commits — they only
 exist on the remote until you pull. Sync it to the new `main` before you consider
