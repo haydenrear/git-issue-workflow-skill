@@ -45,11 +45,12 @@ worktrees sharing a ticket id are **named, never guessed between**.
 ### Why one line, and where the rest went
 
 The path is the only fact on it that an agent cannot work out for itself.
-Everything else follows from the path *by construction*:
+Everything else follows from the path *by construction*, or is a key:
 
 | What you might want | Where it comes from |
 |---|---|
 | where to edit | the path |
+| what it was branched from, and the commit that resolved to | the `BASE` key on the creating run — **not** on this line; see *The branch point* |
 | the launcher | `<worktree>/.skill-manager/bin/launch/claude` |
 | the drift-gate remedy, if `LAUNCH` refuses with **exit 8** | `<worktree>/.skill-manager/bin/cli/skill-manager home drift --ack` |
 | the teardown | `"$S/wt" close TICKET-123` — the other half of what you just typed |
@@ -69,10 +70,84 @@ worktree the skill's upstream is the wrong target anyway, since the copy holding
 the edit lived in the home that was just deleted. See
 `references/skill-homes.md`, and git-integration-skill#8.
 
+**Nothing is ever added to that line.** `BASE` was briefly a `(base …)` clause on
+it, and that is why the rule is written down rather than assumed: three parsers
+in two other repositories read the summary — an anchored
+`^created worktree (\S+)$` in skill-manager's onboarding graph and two
+`line[len("created worktree "):]` slices in the skt evals — and a single extra
+word broke all three. One of them then scored a path that could not exist as a
+**pass**. The summary is *prose*; anything a caller must act on is a **key**,
+matched generically as `^KEY<space>`, which costs nothing to add anywhere. A
+caller reading this line was always unsupported, and putting load-bearing data on
+it does not merely risk such callers — it rewards them.
+
 `wt new` and `wt close` run constantly, and four long absolute paths restating
 the fifth is a cost paid on every one of them. `IF-EXIT-8` was the clearest
 case: a remedy for a gate that has not fired, printed on every run in which it
 never fires.
+
+### The branch point
+
+```
+error creating worktree: base epic/subtract-to-measure is 21 commit(s) behind origin/epic/subtract-to-measure — branching it would start from a superseded tree (--stale-base-ok to do it anyway)
+fix: /…/skills/git-issue-workflow/scripts/wt new SM-07 origin/epic/subtract-to-measure
+log: /tmp/wt-9fK2aQ-run.log
+```
+
+`git worktree add -b F <path> <BASE>` resolves a **bare** `<BASE>` to the
+**local** ref, and nothing in this skill ever fetched. That is fine until
+something other than your checkout is advancing the branch — which is the normal
+case for an epic whose ticket PRs are merged server-side. `gh pr merge` advances
+`origin/epic/<slug>`; your local `epic/<slug>` never moves, and neither does your
+local *copy* of the remote ref, because only a fetch moves that. A ticket then
+branches from a superseded tree, edits a file that has been replaced, and reports
+a true sentence about the wrong tree. Measured once at 21 commits.
+
+So `new` measures the branch point before creating anything:
+
+- If the base is a **local branch** with an upstream, or with a matching
+  `origin/<base>`, that ref is **refreshed first** — exactly
+  `+refs/heads/<base>:refs/remotes/<remote>/<base>`, `--no-tags`, one ref from
+  one remote. Without the refresh the check is close to vacuous for the case
+  that motivates it, since both sides of the comparison would be equally stale
+  local refs. `WT_FETCH=0` skips it (offline, or a slow link);
+  `WT_FETCH_TIMEOUT` (default 10 s) bounds a stalled transfer, and credential
+  prompts are disabled so the fetch cannot block on one. **A failed fetch is not
+  a refusal** — the comparison still runs against the ref as it stood, and the
+  log says so.
+- If the local ref is then **behind**, the run refuses, as above.
+- **Ahead**, **equal**, and **no remote counterpart at all** proceed untouched.
+  A base that is not a local branch — a tag, a SHA, or a base already spelled
+  `origin/<x>` — is exactly what you asked for and is never gated.
+
+It is **not** silently redirected to `origin/<base>`. Branching from a
+deliberately local state is a legitimate thing to want, and quietly retargeting
+it would be the same defect facing the other way. `--stale-base-ok` is the one
+flag for that case, it is named in the refusal, and a run that uses it says so —
+in one line on **stderr**, leaving stdout byte-identical to any other run:
+
+```
+$ "$S/wt" new SM-07 epic/subtract-to-measure --stale-base-ok
+created worktree /repos/proj-SM-07                              # stdout, unchanged
+note: branched from a stale base — 21 behind origin/epic/subtract-to-measure, taken anyway via --stale-base-ok
+```
+
+That is the same trade `close --force` makes: the run that deliberately overrode
+a gate is the one run that owes an acknowledgement, and it is paid on stderr so
+that stdout stays a contract. As a key it is `STALE-BASE`, present only on the
+overridden run, so "was this branched from a stale point" is answerable by
+presence rather than by matching a substring.
+
+**Where the commit itself is.** The `BASE` key, on the creating run —
+`new-change.sh` stdout, `wt new --verbose`. Not on `wt info`, which answers about
+a worktree some other run made and measured no branch point; `None` there means
+"not measured", never "branched from nothing".
+
+**What this still cannot catch.** The base is compared once, before the worktree
+exists. Nothing re-checks it afterwards, so a merge landing on the epic branch a
+minute later is invisible until the ticket rebases — the `BASE` key is what makes
+that answerable. And with `WT_FETCH=0`, or when the fetch fails, staleness is
+only visible if some *earlier* fetch already recorded it.
 
 **The keys are not gone, they are on demand.** All six are still printed, as the
 same `KEY  value` contract as before, by any of:
@@ -85,6 +160,10 @@ S="${SKILL_MANAGER_HOME:-$HOME/.skill-manager}/skills/git-issue-workflow/scripts
 "$S/wt" close TICKET-123 --dry-run   # CLEAN / CLOSE — would this close cleanly?
 "$S/wt" close TICKET-123 --force     # CLOSED / BRANCH / DELETE / HOME-WORK, plus what it discarded
 ```
+
+`info` prints no `BASE`: it answers about a worktree some other run created and
+does not know what that run branched from. A key there would be a fact this
+skill did not measure.
 
 ### How long it takes, and how to wait for it
 
