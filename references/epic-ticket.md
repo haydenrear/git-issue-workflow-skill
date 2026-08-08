@@ -327,7 +327,8 @@ The PR body must contain:
   declared goal writes `None declared` so a reader can tell that apart from a
   goal that was ignored. An **evaluation ticket** carries a `## Goal verdicts`
   table instead — baseline → measured → target and a `met` / `missed` /
-  `unmeasured` verdict per owned goal. Both formats are in
+  `unmeasured` verdict per owned goal, split one row per clause where a target
+  has several. Both formats are in
   `references/goal-signal.md`;
 - the append-only close-history path; and
 - the resulting ticket commit SHA.
@@ -402,8 +403,10 @@ things change, and the full contract is "The evaluation ticket" in
   reconciled epic tip, from a fresh start — no warm cache, no resumed run, no
   node re-run in isolation — writing under that goal's `evidence_root`.
 - **It reports verdicts.** `## Goal verdicts` with baseline → measured → target
-  and exactly `met`, `missed`, or `unmeasured` (with a reason) per goal. A
-  harness that could not run is `unmeasured`, never a zero and never omitted.
+  and exactly `met`, `missed`, or `unmeasured` (with a reason) — **per clause**,
+  not per goal, wherever a target has more than one, since one token cannot
+  carry a goal that settled met on one clause and missed on another. A harness
+  that could not run is `unmeasured`, never a zero and never omitted.
 - **It never repairs what it measures.** No editing a target to match a result,
   no selective re-runs until a number passes, no fixing the regressions it
   finds — those are deferred findings with the measurement attached. A missed

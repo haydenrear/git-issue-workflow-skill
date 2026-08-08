@@ -91,7 +91,9 @@ the wrong way" are reported, not omitted — and neither is a reason to hold the
 PR, tune the change, or re-run until the number improves
 (`references/goal-signal.md`). An issue whose own slice **is** the measurement
 reports `## Goal verdicts` instead: baseline → measured → target with a `met` /
-`missed` / `unmeasured` verdict.
+`missed` / `unmeasured` verdict, **one row per clause** where the target has
+more than one — a single token has to pick a clause and picks the flattering
+one.
 
 If the rebase merge is blocked (required review, branch protection, merge
 conflict), stop and surface that instead of forcing it — don't bypass a real gate.
