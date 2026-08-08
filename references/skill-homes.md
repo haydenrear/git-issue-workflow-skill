@@ -532,7 +532,7 @@ Confusing them loses work. They move different things in different directions.
 |---|---|---|
 | What moves | A **parent** change: the diff you committed to the integration feature branch | A **skill** change: an edit an agent made to a unit inside its own home |
 | From | The integration repo's merged feature branch | `<checkout>/.skill-manager/skills/<unit>/` |
-| To | Each affected constituent's own repo: `feature/<TICKET>` + MR + one tracking issue | That skill's own repo, trunk-style, via `skill-manager project sync` (see the skill-manager and skill-publisher skills) |
+| To | Each affected constituent's own repo: `feature/<TICKET>` + MR + one tracking issue | That skill's own repo, trunk-style, via `skill-manager project sync` (see the skill-manager skill and the skt plugin's unit-authoring skill) |
 | Trigger | You merged a cross-repo change | An agent improved a skill while using it |
 | Ignores the other's state | Yes — it fans out the parent diff and knows nothing about homes | Yes — it pushes a unit and knows nothing about the parent branch |
 
