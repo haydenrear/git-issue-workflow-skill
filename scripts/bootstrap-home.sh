@@ -1475,6 +1475,42 @@ project_agent_homes() {
 }
 
 project_agent_homes
+
+# ---------------------------------------------------------------- plugins
+# A cloned home carries plugin BYTES but no harness REGISTRATION: projectors
+# emit no PLUGIN projections, so no ledger records them, and `claude plugin
+# install` is a harness-CLI side effect that copying files never re-runs —
+# hooks and commands in a fresh worktree home would silently never load.
+# `home refresh-plugins` closes exactly that gap, and ONLY that gap: it
+# regenerates the marketplace under this home's own name and re-registers,
+# without syncing any unit content (so it cannot reintroduce the close-out
+# .git/index drift a full `sync` causes — the issue #50 class the ledger-first
+# ordering above exists to avoid).
+register_plugins() {
+  [ "$frozen_skip" = 0 ] || return 0
+  [ "$NO_PROJECT" = 0 ] || return 0
+  local plugin_count=0 p
+  for p in "$STORE"/plugins/*/; do
+    [ -d "$p" ] || continue
+    plugin_count=$((plugin_count + 1))
+  done
+  [ "$plugin_count" -gt 0 ] || return 0
+  # Capability probe by help TEXT: released CLIs without the subcommand print
+  # top-level usage and exit 0 for unknown `home` verbs (same reason
+  # close-change.sh probes for --into), so the exit code proves nothing.
+  if ! env SKILL_MANAGER_HOME="$STORE" "$CLI" home --help 2>/dev/null | command grep -q 'refresh-plugins'; then
+    out "warning:   this home holds $plugin_count plugin(s), but the pinned skill-manager has no 'home refresh-plugins' — hooks/commands will not load in agents launched here. Upgrade the CLI and re-run this script."
+    return 0
+  fi
+  heading "Registering the home's $plugin_count plugin(s) with the harness CLIs"
+  # >&2: stdout carries the contract, nothing else. Non-fatal on failure —
+  # registration is re-attemptable and a missing harness CLI is not an error.
+  # shellcheck disable=SC2046
+  env $(agent_env_words) SKILL_MANAGER_HOME="$STORE" "$CLI" home refresh-plugins >&2 || \
+    out "warning:   plugin registration reported a failure (non-fatal). Re-run: $(home_env_prefix) $CLI home refresh-plugins"
+}
+register_plugins
+
 # Again, after the sync: `sync` writes <root>/.claude.json and may create other
 # root-level state, and the call above the emptiness gate ran before it existed.
 # Idempotent, so the cost of calling it twice is one `git status`, and calling
